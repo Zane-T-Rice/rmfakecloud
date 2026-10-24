@@ -19,6 +19,9 @@ import { pdfjs, Document, Page } from "react-pdf";
 // ).toString(); 
 
 
+// the page is shown at this width on any window size, smaller when the viewer is
+const MAX_PAGE_WIDTH = 800;
+
 export default function FileViewer({ file, onSelect }) {
   const { data } = file;
 
@@ -61,7 +64,7 @@ export default function FileViewer({ file, onSelect }) {
     const el = parent.current;
     if (!el) return;
     const resizeObserver = new ResizeObserver(() => {
-      setWidth(el.clientWidth);
+      setWidth(Math.min(el.clientWidth, MAX_PAGE_WIDTH));
     });
     resizeObserver.observe(el);
     return () => resizeObserver.disconnect();
@@ -155,11 +158,13 @@ export default function FileViewer({ file, onSelect }) {
       {file && (
         <div ref={parent} style={{height: "95%", overflowY: "auto"}}>
 		  <Document file={downloadUrl} onLoadSuccess={onLoadSuccess} options={options}>
-            <Page pageNumber={page}
-              width={width}
-              renderAnnotationLayer={false}
-              renderTextLayer={false}
-            />
+            <div style={{ width, margin: "0 auto" }}>
+              <Page pageNumber={page}
+                width={width}
+                renderAnnotationLayer={false}
+                renderTextLayer={false}
+              />
+            </div>
           </Document>
         </div>
       )}
