@@ -15,7 +15,7 @@ func TestPagesFromCPages_PdfUsesRedirOrder(t *testing.T) {
 		"pageCount": 3,
 		"cPages": {
 			"pages": [
-				{"id": "page-c", "idx": {"value": "bc"}, "redir": {"value": 2}},
+				{"id": "page-c", "idx": {"value": "bc"}, "redir": {"value": 2}, "template": {"value": "P Grid medium"}},
 				{"id": "page-a", "idx": {"value": "ba"}, "redir": {"value": 0}},
 				{"id": "page-b", "idx": {"value": "bb"}, "redir": {"value": 1}}
 			]
@@ -23,7 +23,7 @@ func TestPagesFromCPages_PdfUsesRedirOrder(t *testing.T) {
 	}`)
 
 	got := pagesFromCPages(content)
-	want := []string{"page-a", "page-b", "page-c"}
+	want := []cPageInfo{{ID: "page-a"}, {ID: "page-b"}, {ID: "page-c", Template: "P Grid medium"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -47,7 +47,7 @@ func TestPagesFromCPages_NotebookSkipsDeletedUsesIdxOrder(t *testing.T) {
 	}`)
 
 	got := pagesFromCPages(content)
-	want := []string{"page-1", "page-2"}
+	want := []cPageInfo{{ID: "page-1"}, {ID: "page-2"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}

@@ -39,10 +39,11 @@ func RenderPoundifdef(input, output string) (io.ReadCloser, error) {
 }
 
 // RenderRmapi renders with rmapi
-func RenderRmapi(a *MyArchive, output io.Writer) error {
+func RenderRmapi(a *MyArchive, output io.Writer, templatesDir string) error {
 	pdfgen := PdfGenerator{}
 	options := PdfGeneratorOptions{
-		AllPages: true,
+		AllPages:     true,
+		TemplatesDir: templatesDir,
 	}
 	return pdfgen.Generate(a, output, options)
 }

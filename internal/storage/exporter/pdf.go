@@ -41,12 +41,16 @@ type PdfGenerator struct {
 	options   PdfGeneratorOptions
 	pdfReader *pdf.PdfReader
 	template  bool
+	templates map[string]*template
 }
 
 type PdfGeneratorOptions struct {
 	AddPageNumbers  bool
 	AllPages        bool
 	AnnotationsOnly bool //export the annotations without the background/pdf
+	// TemplatesDir has the *.template files copied from the device, backgrounds
+	// of notebook pages are left blank without them
+	TemplatesDir string
 }
 
 // deviceSize returns the screen size the page was written on
@@ -148,6 +152,10 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 		}
 		if page == nil {
 			logrus.Fatal("page is null")
+		}
+
+		if p.template && !p.options.AnnotationsOnly {
+			p.drawTemplate(c, page, pageAnnotations.Pagedata, deviceW, scale)
 		}
 
 		if err != nil {
@@ -295,4 +303,40 @@ func (p *PdfGenerator) addBackgroundPage(c *creator.Creator, pageNum int, templa
 		})
 	}
 	return page, nil
+}
+
+// drawTemplate draws the background template of a notebook page, if the
+// template files are available. Pages are left blank otherwise.
+func (p *PdfGenerator) drawTemplate(c *creator.Creator, page *pdf.PdfPage, name string, deviceW, scale float64) {
+	if p.options.TemplatesDir == "" || name == "" || name == "Blank" {
+		return
+	}
+	t, ok := p.templates[name]
+	if !ok {
+		var err error
+		t, err = LoadTemplate(p.options.TemplatesDir, name)
+		if err != nil {
+			logrus.Warnf("cannot load template %q: %v", name, err)
+		}
+		if p.templates == nil {
+			p.templates = make(map[string]*template)
+		}
+		// remember failures too
+		p.templates[name] = t
+	}
+	if t == nil {
+		return
+	}
+
+	ops, err := t.Render(c, deviceW, c.Height()/scale, scale)
+	if err != nil {
+		logrus.Warnf("cannot render template %q: %v", name, err)
+		return
+	}
+	existing, err := page.GetAllContentStreams()
+	if err != nil {
+		logrus.Warnf("template %q: %v", name, err)
+		return
+	}
+	page.SetContentStreams([]string{existing, ops}, core.NewFlateEncoder())
 }

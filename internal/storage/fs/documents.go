@@ -98,7 +98,7 @@ func (fs *FileSystemStorage) ExportDocument(uid, id, outputType string, exportOp
 		return nil, err
 	}
 
-	err = exporter.RenderRmapi(arch, outputFile)
+	err = exporter.RenderRmapi(arch, outputFile, fs.templatesDir())
 	if err != nil {
 		return nil, err
 	}
@@ -178,4 +178,9 @@ func (fs *FileSystemStorage) GetStorageURL(uid, id string) (docurl string, expir
 	}
 
 	return fmt.Sprintf("%s%s/%s", uploadRL, routeStorage, url.QueryEscape(signedToken)), exp, nil
+}
+
+// templatesDir has the notebook templates copied from the device
+func (fs *FileSystemStorage) templatesDir() string {
+	return filepath.Join(fs.Cfg.DataDir, "templates")
 }

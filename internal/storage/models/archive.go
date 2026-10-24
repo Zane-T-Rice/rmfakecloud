@@ -29,6 +29,9 @@ type cPagesContent struct {
 			Idx struct {
 				Value string `json:"value"`
 			} `json:"idx"`
+			Template struct {
+				Value string `json:"value"`
+			} `json:"template"`
 			Redir *struct {
 				Value int `json:"value"`
 			} `json:"redir"`
@@ -36,10 +39,16 @@ type cPagesContent struct {
 	} `json:"cPages"`
 }
 
-// pagesFromCPages extracts the live (non-deleted) page IDs in document order
+// cPageInfo is a live page of a document
+type cPageInfo struct {
+	ID       string
+	Template string
+}
+
+// pagesFromCPages extracts the live (non-deleted) pages in document order
 // from the cPages structure, for content files that don't populate the
 // legacy flat "pages" array.
-func pagesFromCPages(contentBytes []byte) []string {
+func pagesFromCPages(contentBytes []byte) []cPageInfo {
 	var withCPages cPagesContent
 	if err := json.Unmarshal(contentBytes, &withCPages); err != nil || withCPages.CPages == nil {
 		return nil
@@ -47,6 +56,7 @@ func pagesFromCPages(contentBytes []byte) []string {
 
 	type entry struct {
 		id       string
+		template string
 		idx      string
 		redir    int
 		hasRedir bool
@@ -56,7 +66,7 @@ func pagesFromCPages(contentBytes []byte) []string {
 		if p.Deleted != nil {
 			continue
 		}
-		e := entry{id: p.ID, idx: p.Idx.Value}
+		e := entry{id: p.ID, template: p.Template.Value, idx: p.Idx.Value}
 		if p.Redir != nil {
 			e.redir = p.Redir.Value
 			e.hasRedir = true
@@ -71,9 +81,9 @@ func pagesFromCPages(contentBytes []byte) []string {
 		return entries[i].idx < entries[j].idx
 	})
 
-	pages := make([]string, len(entries))
+	pages := make([]cPageInfo, len(entries))
 	for i, e := range entries {
-		pages[i] = e.id
+		pages[i] = cPageInfo{ID: e.id, Template: e.template}
 	}
 	return pages
 }
@@ -88,6 +98,7 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 	}
 
 	pageMap := make(map[string]string)
+	templates := make(map[string]string)
 	for _, f := range doc.Files {
 		filext := path.Ext(f.EntryName)
 		name := strings.TrimSuffix(path.Base(f.EntryName), filext)
@@ -109,7 +120,10 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 			if len(a.Content.Pages) == 0 {
 				if pages := pagesFromCPages(contentBytes); len(pages) > 0 {
 					log.Debug("pages empty, falling back to cPages, count: ", len(pages))
-					a.Content.Pages = pages
+					for _, pg := range pages {
+						a.Content.Pages = append(a.Content.Pages, pg.ID)
+						templates[pg.ID] = pg.Template
+					}
 				}
 			}
 		case storage.EpubFileExt:
@@ -138,7 +152,7 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 
 	for i, p := range a.Content.Pages {
 		page := archive.Page{
-			Pagedata: "Blank",
+			Pagedata: pageTemplate(templates[p]),
 			DocPage:  i,
 		}
 		if hash, ok := pageMap[p]; ok {
@@ -166,4 +180,12 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 	}
 
 	return &a, nil
+}
+
+// pageTemplate is the template of a page, blank when unknown
+func pageTemplate(name string) string {
+	if name == "" {
+		return "Blank"
+	}
+	return name
 }
