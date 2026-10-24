@@ -19,8 +19,11 @@ import { pdfjs, Document, Page } from "react-pdf";
 // ).toString(); 
 
 
-// the page is shown at this width on any window size, smaller when the viewer is
-const MAX_PAGE_WIDTH = 800;
+// the tablet screen is 3:4, size the page so the viewer height shows what the
+// tablet screen shows, whatever the window width. Never wider than the viewer
+// and not too small to read.
+const TABLET_ASPECT = 3 / 4;
+const MIN_PAGE_WIDTH = 400;
 
 export default function FileViewer({ file, onSelect }) {
   const { data } = file;
@@ -64,7 +67,8 @@ export default function FileViewer({ file, onSelect }) {
     const el = parent.current;
     if (!el) return;
     const resizeObserver = new ResizeObserver(() => {
-      setWidth(Math.min(el.clientWidth, MAX_PAGE_WIDTH));
+      const fit = Math.max(el.clientHeight * TABLET_ASPECT, MIN_PAGE_WIDTH);
+      setWidth(Math.min(el.clientWidth, fit));
     });
     resizeObserver.observe(el);
     return () => resizeObserver.disconnect();
