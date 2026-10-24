@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Button, ButtonGroup, Dropdown } from "react-bootstrap";
+import { Button, ButtonGroup, Dropdown, Form } from "react-bootstrap";
 import Navbar from 'react-bootstrap/Navbar';
 import { FaChevronRight, FaChevronLeft, } from "react-icons/fa6";
 import { AiOutlineDownload } from "react-icons/ai";
@@ -41,6 +41,20 @@ export default function FileViewer({ file, onSelect }) {
     setPage((p) => {
       return Math.min(p + 1, pages);
     });
+  };
+
+  const [pageInput, setPageInput] = useState("1");
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  const commitPageInput = () => {
+    const value = parseInt(pageInput, 10);
+    if (!Number.isNaN(value)) {
+      setPage(Math.min(Math.max(value, 1), pages));
+    } else {
+      setPageInput(String(page));
+    }
   };
 	const parent = useRef(null);
 	useEffect(() => {
@@ -96,8 +110,26 @@ export default function FileViewer({ file, onSelect }) {
               <Button size="sm" variant="outline-secondary" onClick={onPrev}><FaChevronLeft /></Button>
               <Button size="sm" variant="outline-secondary" onClick={onNext}><FaChevronRight /></Button>
             </ButtonGroup>
-            <span style={{ margin: '0 10px' }}>
-              Page: {page} of {pages}
+            <span style={{ margin: '0 10px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              Page:
+              <Form.Control
+                size="sm"
+                type="number"
+                min={1}
+                max={pages}
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                onBlur={commitPageInput}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitPageInput();
+                    e.target.blur();
+                  }
+                }}
+                style={{ width: '4.5em' }}
+              />
+              of {pages}
             </span>
           </div>
         )}
