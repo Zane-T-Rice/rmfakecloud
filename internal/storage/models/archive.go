@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/ddvk/rmfakecloud/internal/storage"
@@ -12,6 +13,70 @@ import (
 	"github.com/juruen/rmapi/encoding/rm"
 	log "github.com/sirupsen/logrus"
 )
+
+// cPagesContent captures the page ordering used by newer reMarkable software
+// (formatVersion 2+), which drops the flat "pages" array in favor of a cPages
+// structure. Page entries carry a "redir" (index into the underlying pdf/epub)
+// or, for plain notebooks, only a lexicographically-ordered "idx". Removed
+// pages are kept around with a "deleted" marker rather than being omitted.
+type cPagesContent struct {
+	CPages *struct {
+		Pages []struct {
+			ID      string `json:"id"`
+			Deleted *struct {
+				Value int `json:"value"`
+			} `json:"deleted"`
+			Idx struct {
+				Value string `json:"value"`
+			} `json:"idx"`
+			Redir *struct {
+				Value int `json:"value"`
+			} `json:"redir"`
+		} `json:"pages"`
+	} `json:"cPages"`
+}
+
+// pagesFromCPages extracts the live (non-deleted) page IDs in document order
+// from the cPages structure, for content files that don't populate the
+// legacy flat "pages" array.
+func pagesFromCPages(contentBytes []byte) []string {
+	var withCPages cPagesContent
+	if err := json.Unmarshal(contentBytes, &withCPages); err != nil || withCPages.CPages == nil {
+		return nil
+	}
+
+	type entry struct {
+		id       string
+		idx      string
+		redir    int
+		hasRedir bool
+	}
+	var entries []entry
+	for _, p := range withCPages.CPages.Pages {
+		if p.Deleted != nil {
+			continue
+		}
+		e := entry{id: p.ID, idx: p.Idx.Value}
+		if p.Redir != nil {
+			e.redir = p.Redir.Value
+			e.hasRedir = true
+		}
+		entries = append(entries, e)
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].hasRedir && entries[j].hasRedir {
+			return entries[i].redir < entries[j].redir
+		}
+		return entries[i].idx < entries[j].idx
+	})
+
+	pages := make([]string, len(entries))
+	for i, e := range entries {
+		pages[i] = e.id
+	}
+	return pages
+}
 
 // ArchiveFromHashDoc reads an archive
 func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, error) {
@@ -40,6 +105,12 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 			err = json.Unmarshal(contentBytes, &a.Content)
 			if err != nil {
 				return nil, err
+			}
+			if len(a.Content.Pages) == 0 {
+				if pages := pagesFromCPages(contentBytes); len(pages) > 0 {
+					log.Debug("pages empty, falling back to cPages, count: ", len(pages))
+					a.Content.Pages = pages
+				}
 			}
 		case storage.EpubFileExt:
 			fallthrough
