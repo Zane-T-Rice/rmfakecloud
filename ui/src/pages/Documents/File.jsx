@@ -26,8 +26,7 @@ export default function FileViewer({ file, onSelect }) {
 
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
-  // const [width, setWidth] = useState(100);
-  const [height, setHeight] = useState(100);
+  const [width, setWidth] = useState(100);
   const onLoadSuccess = (pdf) => {
     setPage(1);
     setPages(pdf.numPages);
@@ -56,17 +55,22 @@ export default function FileViewer({ file, onSelect }) {
       setPageInput(String(page));
     }
   };
-	const parent = useRef(null);
-	useEffect(() => {
-		const resizeObserver = new ResizeObserver((event) => {
-			// Depending on the layout, you may need to swap inlineSize with blockSize
-			// https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserverEntry/contentBoxSize
-			// setWidth(event[0].contentBoxSize[0].inlineSize);
-			setHeight(event[0].contentBoxSize[0].blockSize);
-		});
+  const parent = useRef(null);
+  useEffect(() => {
+    // fit the page to the viewer width, long pages scroll
+    const el = parent.current;
+    if (!el) return;
+    const resizeObserver = new ResizeObserver(() => {
+      setWidth(el.clientWidth);
+    });
+    resizeObserver.observe(el);
+    return () => resizeObserver.disconnect();
+  }, [file]);
 
-		resizeObserver.observe(parent.current);
-	});
+  // start every page at the top
+  useEffect(() => {
+    if (parent.current) parent.current.scrollTop = 0;
+  }, [page]);
 
   // TODO: add loading and error handling
   const triggerDownload = (blob, filename) => {
@@ -149,14 +153,13 @@ export default function FileViewer({ file, onSelect }) {
 
 
       {file && (
-        <div ref={parent} style={{height: "95%"}}>
+        <div ref={parent} style={{height: "95%", overflowY: "auto"}}>
 		  <Document file={downloadUrl} onLoadSuccess={onLoadSuccess} options={options}>
-            <Page pageNumber={page} 
-							// width={ width } 
-							height={ height} 
-							renderAnnotationLayer={false} 
-							renderTextLayer={false}
-						/>
+            <Page pageNumber={page}
+              width={width}
+              renderAnnotationLayer={false}
+              renderTextLayer={false}
+            />
           </Document>
         </div>
       )}
