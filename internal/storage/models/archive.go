@@ -136,7 +136,11 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 		}
 	}
 
-	for _, p := range a.Content.Pages {
+	for i, p := range a.Content.Pages {
+		page := archive.Page{
+			Pagedata: "Blank",
+			DocPage:  i,
+		}
 		if hash, ok := pageMap[p]; ok {
 			log.Debug("page ", hash)
 			reader, err := rs.GetReader(hash)
@@ -152,13 +156,13 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 			if err != nil {
 				return nil, err
 			}
-
-			page := archive.Page{
-				Data:     rmpage,
-				Pagedata: "Blank",
-			}
-			a.Pages = append(a.Pages, page)
+			page.Data = rmpage
 		}
+		// A page with no .rm file (never opened/annotated on the device)
+		// still needs an entry here so the output page count and page
+		// numbering match the underlying pdf/epub; the generator already
+		// handles a nil Data as a background-only page.
+		a.Pages = append(a.Pages, page)
 	}
 
 	return &a, nil
