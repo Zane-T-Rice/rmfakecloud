@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/juruen/rmapi/encoding/rm"
 	"github.com/sirupsen/logrus"
@@ -20,7 +21,21 @@ const (
 	DeviceHeight = 1872
 )
 
-var rmPageSize = creator.PageSize{445, 594}
+const (
+	// Paper Pro screen, used by v6 files
+	PaperProWidth  = 1620
+	PaperProHeight = 2160
+
+	// template-only pages are this wide in points, the height follows the content
+	rmPageWidth  = 445.0
+	rmPageHeight = 594.0
+	// extra room below the lowest stroke, in device pixels
+	pageBottomMargin = 100.0
+)
+
+// ddvk/rmapi decodes v6 x coordinates (centered on the page) assuming the
+// classic 1404px wide screen, so on a Paper Pro they are off by this much
+const v6XCorrection = float64(PaperProWidth)/2 - float64(DeviceWidth)/2
 
 type PdfGenerator struct {
 	options   PdfGeneratorOptions
@@ -34,8 +49,51 @@ type PdfGeneratorOptions struct {
 	AnnotationsOnly bool //export the annotations without the background/pdf
 }
 
-func normalized(p1 rm.Point, ratioX float64) (float64, float64) {
-	return float64(p1.X) * ratioX, float64(p1.Y) * ratioX
+// deviceSize returns the screen size the page was written on
+func deviceSize(data *rm.Rm) (float64, float64) {
+	if data != nil && data.Version == rm.V6 {
+		return PaperProWidth, PaperProHeight
+	}
+	return DeviceWidth, DeviceHeight
+}
+
+// xCorrection is the shift to apply to the decoded x coordinates
+func xCorrection(data *rm.Rm) float64 {
+	if data != nil && data.Version == rm.V6 {
+		return v6XCorrection
+	}
+	return 0
+}
+
+// maxContentY is the lowest point drawn on the page
+func maxContentY(data *rm.Rm) float64 {
+	var max float64
+	if data == nil {
+		return max
+	}
+	for _, layer := range data.Layers {
+		for _, line := range layer.Lines {
+			for _, p := range line.Points {
+				if float64(p.Y) > max {
+					max = float64(p.Y)
+				}
+			}
+		}
+	}
+	return max
+}
+
+// templatePageHeight is the height in points needed to fit the whole content
+// of a template page (notebook pages can scroll far past one screen)
+func templatePageHeight(data *rm.Rm) float64 {
+	w, h := deviceSize(data)
+	scale := rmPageWidth / w
+	needed := scale * math.Max(h, maxContentY(data)+pageBottomMargin)
+	return math.Max(rmPageHeight, needed)
+}
+
+func normalized(p1 rm.Point, ratioX float64, xShift float64) (float64, float64) {
+	return (float64(p1.X) + xShift) * ratioX, float64(p1.Y) * ratioX
 }
 
 func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGeneratorOptions) (err error) {
@@ -56,10 +114,6 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 	}
 
 	c := creator.New()
-	if p.template {
-		// use the standard page size
-		c.SetPageSize(rmPageSize)
-	}
 
 	if p.pdfReader != nil && p.options.AllPages {
 		logrus.Info("generating all pages")
@@ -75,18 +129,22 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 			continue
 		}
 
-		page, err := p.addBackgroundPage(c, i+1)
+		page, err := p.addBackgroundPage(c, i+1, templatePageHeight(pageAnnotations.Data))
 		if err != nil {
 			return err
 		}
 
-		ratio := c.Height() / c.Width()
+		deviceW, deviceH := deviceSize(pageAnnotations.Data)
+		xShift := xCorrection(pageAnnotations.Data)
 
 		var scale float64
-		if ratio < 1.33 {
-			scale = c.Width() / DeviceWidth
+		if p.template {
+			// the page is as wide as the screen, the height was fitted to the content
+			scale = c.Width() / deviceW
+		} else if ratio := c.Height() / c.Width(); ratio < 1.33 {
+			scale = c.Width() / deviceW
 		} else {
-			scale = c.Height() / DeviceHeight
+			scale = c.Height() / deviceH
 		}
 		if page == nil {
 			logrus.Fatal("page is null")
@@ -113,8 +171,8 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 
 				if line.BrushType == rm.HighlighterV5 {
 					last := len(line.Points) - 1
-					x1, y1 := normalized(line.Points[0], scale)
-					x2, _ := normalized(line.Points[last], scale)
+					x1, y1 := normalized(line.Points[0], scale, xShift)
+					x2, _ := normalized(line.Points[last], scale, xShift)
 					// make horizontal lines only, use y1
 					width := scale * 30
 					y1 += width / 2
@@ -131,7 +189,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 				} else {
 					path := draw.NewPath()
 					for i := 0; i < len(line.Points); i++ {
-						x1, y1 := normalized(line.Points[i], scale)
+						x1, y1 := normalized(line.Points[i], scale, xShift)
 						path = path.AppendPoint(draw.NewPoint(x1, c.Height()-y1))
 					}
 
@@ -199,7 +257,7 @@ func (p *PdfGenerator) initBackgroundPages(r io.ReadSeeker) error {
 	return nil
 }
 
-func (p *PdfGenerator) addBackgroundPage(c *creator.Creator, pageNum int) (*pdf.PdfPage, error) {
+func (p *PdfGenerator) addBackgroundPage(c *creator.Creator, pageNum int, templateHeight float64) (*pdf.PdfPage, error) {
 	var page *pdf.PdfPage
 
 	if !p.template && !p.options.AnnotationsOnly {
@@ -220,6 +278,9 @@ func (p *PdfGenerator) addBackgroundPage(c *creator.Creator, pageNum int) (*pdf.
 		c.AddPage(tmpPage)
 		page = tmpPage
 	} else {
+		if p.template {
+			c.SetPageSize(creator.PageSize{rmPageWidth, templateHeight})
+		}
 		page = c.NewPage()
 	}
 
