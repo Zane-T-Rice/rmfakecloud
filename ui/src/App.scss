@@ -105,6 +105,15 @@ canvas {
   max-height: calc(100vh - 230px);
 }
 
+// the pdf preview fills the viewer width and scrolls, the rule above would
+// squeeze the page to the viewer height
+.react-pdf__Page canvas {
+  margin: 0;
+  width: 100% !important;
+  height: auto !important;
+  max-height: none;
+}
+
 code {
     padding: 0.5em;
     background-color: $background1;
