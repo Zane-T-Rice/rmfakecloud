@@ -255,3 +255,49 @@ func TestFinishClosesTheViewers(t *testing.T) {
 		t.Fatalf("the session is still listed")
 	}
 }
+
+// the tablet's streams may end without the closing block, the page takes those
+func frameUnclosed(rects ...rect) []byte {
+	var raw []byte
+	for _, r := range rects {
+		hdr := make([]byte, rectHeaderSize)
+		binary.BigEndian.PutUint16(hdr[0:], uint16(r.x))
+		binary.BigEndian.PutUint16(hdr[2:], uint16(r.y))
+		binary.BigEndian.PutUint16(hdr[4:], uint16(r.w))
+		binary.BigEndian.PutUint16(hdr[6:], uint16(r.h))
+		binary.BigEndian.PutUint32(hdr[8:], uint32(len(r.px)))
+		raw = append(append(raw, hdr...), r.px...)
+	}
+	var packed bytes.Buffer
+	zw := zlib.NewWriter(&packed)
+	zw.Write(raw)
+	zw.Flush() // flushed, never closed
+
+	msg := make([]byte, headerSize)
+	msg[0] = msgFramebuffer
+	binary.BigEndian.PutUint16(msg[1:], uint16(len(rects)))
+	binary.BigEndian.PutUint32(msg[3:], uint32(packed.Len()))
+	return append(msg, packed.Bytes()...)
+}
+
+func TestScreenTakesFramesWithoutTheClosingBlock(t *testing.T) {
+	var sc screen
+	sc.apply(handshake(8, 6))
+	if err := sc.apply(frameUnclosed(rect{0, 0, 8, 6, solid(8, 6, 3)})); err != nil {
+		t.Fatalf("frame not taken: %v", err)
+	}
+	if sc.pixels[0] != 3 || sc.pixels[len(sc.pixels)-1] != 3 {
+		t.Fatalf("the picture is missing")
+	}
+}
+
+func TestUnusableFramesSayWhy(t *testing.T) {
+	var sc screen
+	if err := sc.apply(frame(rect{0, 0, 2, 2, solid(2, 2, 1)})); err == nil {
+		t.Fatalf("a frame before the screen is known was taken")
+	}
+	sc.apply(handshake(8, 6))
+	if err := sc.apply(append([]byte{msgFramebuffer, 0, 1, 0, 0, 0, 3}, 1, 2, 3)); err == nil {
+		t.Fatalf("a frame that is not zlib was taken")
+	}
+}

@@ -181,8 +181,10 @@ type session struct {
 	mu     sync.Mutex
 	err    error
 	screen screen
-	subs   map[*Subscriber]struct{}
-	idle   *time.Timer
+	// frames that could not be used, only the first are logged
+	unusable int
+	subs     map[*Subscriber]struct{}
+	idle     *time.Timer
 }
 
 func newSession(r *Relay, uid string) *session {
@@ -406,7 +408,10 @@ func (s *session) handle(data []byte) {
 	if complete[0] == msgHandshake {
 		s.markReady()
 	}
-	s.screen.apply(complete)
+	if err := s.screen.apply(complete); err != nil && s.unusable < 5 {
+		s.unusable++
+		log.Warnf("Screenshare relay of %s: %v", s.uid, err)
+	}
 	for sub := range s.subs {
 		select {
 		case sub.Messages <- complete:
@@ -524,15 +529,16 @@ func (sc *screen) resize(w, h int) {
 	sc.pixels = make([]byte, w*h*bytesPerPixel)
 }
 
-// apply takes a complete message of the tablet
-func (sc *screen) apply(msg []byte) {
+// apply takes a complete message of the tablet, the error says why a frame could
+// not be used
+func (sc *screen) apply(msg []byte) error {
 	if len(msg) == 0 {
-		return
+		return nil
 	}
 	switch msg[0] {
 	case msgHandshake:
 		if len(msg) < headerSize {
-			return
+			return nil
 		}
 		sc.handshake = append([]byte(nil), msg...)
 		sc.resize(int(binary.BigEndian.Uint16(msg[3:5])), int(binary.BigEndian.Uint16(msg[5:7])))
@@ -541,26 +547,37 @@ func (sc *screen) apply(msg []byte) {
 	case msgCursor:
 		sc.cursor = append([]byte(nil), msg...)
 	case msgFramebuffer:
-		sc.applyFrame(msg)
+		return sc.applyFrame(msg)
 	}
+	return nil
 }
 
-func (sc *screen) applyFrame(msg []byte) {
+// inflate unpacks a frame. The tablet's streams may end without the closing block
+// (the page's inflate takes them), what was read before that is all there is.
+func inflate(packed []byte) ([]byte, error) {
+	zr, err := zlib.NewReader(bytes.NewReader(packed))
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+	raw, err := io.ReadAll(io.LimitReader(zr, maxFrameBytes))
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func (sc *screen) applyFrame(msg []byte) error {
 	if sc.pixels == nil || len(msg) < headerSize {
-		return
+		return errors.New("a frame before the screen is known")
 	}
 	size := int(binary.BigEndian.Uint32(msg[3:7]))
 	if headerSize+size > len(msg) {
-		return
+		return fmt.Errorf("a frame of %d bytes in %d", size, len(msg)-headerSize)
 	}
-	zr, err := zlib.NewReader(bytes.NewReader(msg[headerSize : headerSize+size]))
+	raw, err := inflate(msg[headerSize : headerSize+size])
 	if err != nil {
-		return
-	}
-	raw, err := io.ReadAll(io.LimitReader(zr, maxFrameBytes))
-	zr.Close()
-	if err != nil {
-		return
+		return fmt.Errorf("a frame that does not inflate: %w", err)
 	}
 
 	for pos := 0; pos+rectHeaderSize <= len(raw); {
@@ -571,12 +588,12 @@ func (sc *screen) applyFrame(msg []byte) {
 		n := int(binary.BigEndian.Uint32(raw[pos+8:]))
 		pos += rectHeaderSize
 		if pos+n > len(raw) {
-			return
+			return errors.New("a rect that is cut short")
 		}
 		px := raw[pos : pos+n]
 		pos += n
 		if w <= 0 || h <= 0 || n < w*h*bytesPerPixel {
-			continue
+			return fmt.Errorf("a rect of %dx%d with %d bytes of pixels", w, h, n)
 		}
 		// a (nearly) whole screen at the origin is the new size of the screen,
 		// that is how the page takes it too
@@ -584,7 +601,7 @@ func (sc *screen) applyFrame(msg []byte) {
 			if w != sc.width || h != sc.height {
 				sc.resize(w, h)
 				if sc.pixels == nil {
-					return
+					return fmt.Errorf("a screen of %dx%d", w, h)
 				}
 			}
 		}
@@ -600,6 +617,7 @@ func (sc *screen) applyFrame(msg []byte) {
 			copy(sc.pixels[(dy*sc.width+x)*bytesPerPixel:], px[row*w*bytesPerPixel:(row*w+cols)*bytesPerPixel])
 		}
 	}
+	return nil
 }
 
 // snapshot is the messages that give a new viewer what the screen shows now
