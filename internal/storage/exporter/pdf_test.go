@@ -76,7 +76,7 @@ func TestV6PdfTransform(t *testing.T) {
 func TestStrokeWidth(t *testing.T) {
 	scale := 72.0 / PaperProDPI
 	line := rm.Line{Points: []rm.Point{{Width: 8}, {Width: 10}}}
-	if got, want := strokeWidth(line, scale), 9*scale; got < want-1e-9 || got > want+1e-9 {
+	if got, want := strokeWidth(line, scale), 9*scale*strokeWidthFactor; got < want-1e-9 || got > want+1e-9 {
 		t.Fatalf("width = %v, want %v", got, want)
 	}
 	if got := strokeWidth(rm.Line{Points: []rm.Point{{Width: 0.1}}}, scale); got != minStrokeWidth {
