@@ -486,6 +486,7 @@ export default function ScreenShare() {
       await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
       addDiag("offer from the tablet: " + (sdpCandidates(sdp).join(", ") || "no candidates"));
 
+      let added = [];
       for (const msg of msgs) {
         let inner = msg.payload;
         if (!inner) continue;
@@ -495,9 +496,11 @@ export default function ScreenShare() {
             candidate: inner.candidate,
             sdpMid: inner.mid || "0",
           }));
+          added.push(inner.candidate);
         }
       }
 
+      addDiag(`tablet candidates received: ${added.length}${added.length ? " " + added.join(" | ") : ""}`);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 

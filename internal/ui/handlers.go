@@ -12,6 +12,7 @@ import (
 	"github.com/ddvk/rmfakecloud/internal/common"
 	"github.com/ddvk/rmfakecloud/internal/integrations"
 	"github.com/ddvk/rmfakecloud/internal/model"
+	"github.com/ddvk/rmfakecloud/internal/screenshare"
 	"github.com/ddvk/rmfakecloud/internal/storage"
 	"github.com/ddvk/rmfakecloud/internal/storage/models"
 	"github.com/ddvk/rmfakecloud/internal/ui/viewmodel"
@@ -843,6 +844,58 @@ func (app *ReactAppWrapper) screenshareGetRoom(c *gin.Context) {
 	})
 }
 
+// signalingType is the type of a webrtc signaling message of the tablet: offer,
+// candidate...
+func signalingType(m screenshare.Message) string {
+	var p struct {
+		Type    string `json:"type"`
+		Payload struct {
+			Type string `json:"type"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(m.Payload, &p) != nil {
+		return ""
+	}
+	if p.Type == "webtrc" && p.Payload.Type != "" {
+		return p.Payload.Type
+	}
+	return p.Type
+}
+
+// candidateWait is how long to wait for the tablet's candidates after its offer
+const candidateWait = 4 * time.Second
+
+// waitForCandidates holds the offer back until the tablet's ice candidates have
+// arrived with it. The offer has none in it, they follow as messages, and a
+// browser given the offer alone has no address to connect to.
+func (app *ReactAppWrapper) waitForCandidates(roomID string, msgs []screenshare.Message) []screenshare.Message {
+	has := func(msgs []screenshare.Message, t string) bool {
+		for _, m := range msgs {
+			if signalingType(m) == t {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(msgs, "offer") {
+		return msgs
+	}
+
+	deadline := time.Now().Add(candidateWait)
+	for !has(msgs, "candidate") && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+		msgs = app.roomManager.GetMessages(roomID, 1)
+	}
+	if has(msgs, "candidate") {
+		// the others follow close behind the first
+		time.Sleep(300 * time.Millisecond)
+		msgs = app.roomManager.GetMessages(roomID, 1)
+	} else {
+		log.Warn("Screenshare: no candidates from the tablet with its offer in room ", roomID)
+	}
+	return msgs
+}
+
 func (app *ReactAppWrapper) screenshareGetOffer(c *gin.Context) {
 	uid := userID(c)
 	clientID := c.GetString(browserIDContextKey)
@@ -879,6 +932,7 @@ func (app *ReactAppWrapper) screenshareGetOffer(c *gin.Context) {
 		c.JSON(http.StatusGatewayTimeout, gin.H{"error": "timeout waiting for offer"})
 		return
 	}
+	msgs = app.waitForCandidates(roomID, msgs)
 
 	c.JSON(http.StatusOK, gin.H{
 		"roomId":     roomID,
