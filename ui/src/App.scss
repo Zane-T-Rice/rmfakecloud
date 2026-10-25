@@ -124,41 +124,40 @@ code {
     max-height: 25vh !important;
   }
 
-  // phones: let the page scroll, the tree and the viewer stack below each other
-  html, body, #root {
-    height: auto;
-    min-height: 100%;
-    overflow: auto;
-  }
-
+  // phones: the preview is the page, the file tree is a drawer
   body .container-fluid {
     margin: 0 10px !important;
     width: calc(100vw - 20px) !important;
   }
 
-  .documents-page {
-    height: auto !important;
-    overflow: visible !important;
+  .documents-tree-col {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(85vw, 360px);
+    height: 100% !important;
+    z-index: 1040;
+    padding: 1em;
+    background-color: $background1;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+
+    &.open {
+      transform: none;
+    }
   }
 
-  .documents-row {
-    flex: none !important;
+  .documents-tree-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1030;
+    background-color: rgba(0, 0, 0, 0.5);
   }
 
-  .documents-tree-col,
-  .documents-viewer-col {
-    height: auto !important;
-  }
-
-  .documents-tree-container {
-    flex: none !important;
-    height: 35vh !important;
-  }
-
-  .documents-viewer {
-    flex: none !important;
-    height: 85vh !important;
-    margin-top: 1em;
+  .documents-tree-toggle {
+    flex-shrink: 0;
+    padding-bottom: 6px;
   }
 }
 

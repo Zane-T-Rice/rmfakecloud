@@ -6,7 +6,7 @@ import { Container, Row, Col } from "react-bootstrap";
 import File from "./File";
 import Folder from "./Folder";
 import Navbar from 'react-bootstrap/Navbar';
-import { BsSearch } from "react-icons/bs";
+import { BsSearch, BsList } from "react-icons/bs";
 import Form from 'react-bootstrap/Form';
 import Button from 'react-bootstrap/Button';
 import InputGroup from 'react-bootstrap/InputGroup';
@@ -23,6 +23,8 @@ export default function DocumentList() {
   const [entries, setEntries] = useState([])
   const [initialSelectionSet, setInitialSelectionSet] = useState(false);
   const [treeHeight, setTreeHeight] = useState(700);
+  // the tree is a drawer on phones
+  const [treeOpen, setTreeOpen] = useState(false);
 
   const { itemId } = useParams();
   const history = useHistory();
@@ -60,6 +62,10 @@ export default function DocumentList() {
   const onSelect = (node) => {
     setSelected(node);
     toggleNode(node);
+    // got a document, show it
+    if (node && node.isLeaf) {
+      setTreeOpen(false);
+    }
 
     // Update URL with selected item ID
     if (node && node.id) {
@@ -229,7 +235,7 @@ export default function DocumentList() {
   return (
     <Container fluid className="documents-page" style={{height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", padding: "25px 0 20px 0"}}>
         <Row className="documents-row" style={{flex: "1 1 auto", minHeight: 0}}>
-          <Col md={4} className="documents-tree-col" style={{display: "flex", flexDirection: "column", height: "100%"}}>
+          <Col md={4} className={`documents-tree-col${treeOpen ? " open" : ""}`} style={{display: "flex", flexDirection: "column", height: "100%"}}>
             <Navbar style={{flexShrink: 0}}>
               <div className={`${styles.stretch} ${styles.userid}`}>{user.UserID}</div>
               <Button variant="outline" onClick={() => { setShowSearch(!showSearch); setTerm("") }}><BsSearch/></Button>
@@ -249,7 +255,11 @@ export default function DocumentList() {
               <DocumentTree selection={selected} onSelect={onSelect} treeRef={treeRef} term={term} entries={entries} height={treeHeight} />
             </div>
           </Col>
+          {treeOpen && <div className="documents-tree-backdrop d-md-none" onClick={() => setTreeOpen(false)} />}
           <Col md={8} className="documents-viewer-col" style={{display: "flex", flexDirection: "column", height: "100%"}}>
+            <div className="d-md-none documents-tree-toggle">
+              <Button size="sm" variant="outline-secondary" onClick={() => setTreeOpen(true)} aria-label="Show files"><BsList /> Files</Button>
+            </div>
             <div className="documents-viewer" style={{flex: "1 1 auto", minHeight: 0, overflow: "auto"}}>
               {selected && selected.isLeaf && <File file={selected} onSelect={onSelect} />}
               {selected && !selected.isLeaf && <Folder selection={selected} onSelect={onSelect} onUpdate={onUpdate} counter={counter} />}

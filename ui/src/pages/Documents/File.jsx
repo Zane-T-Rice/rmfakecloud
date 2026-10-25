@@ -109,7 +109,7 @@ export default function FileViewer({ file, onSelect }) {
   },[pdfjs])
 
   return (
-    <>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <Navbar style={{ marginLeft: '-12px' }}>
         { file && (<div><NameTag node={file} onSelect={onSelect} /></div>) }
       </Navbar>
@@ -142,14 +142,6 @@ export default function FileViewer({ file, onSelect }) {
               />
               of {pages}
             </span>
-            <Form.Range
-              min={1}
-              max={pages}
-              value={page}
-              onChange={(e) => setPage(parseInt(e.target.value, 10))}
-              aria-label="Page"
-              style={{ width: '10em', verticalAlign: 'middle' }}
-            />
           </div>
         )}
         <div style={{ flex: 1 }}></div>
@@ -168,7 +160,7 @@ export default function FileViewer({ file, onSelect }) {
 
 
       {file && (
-        <div ref={parent} style={{height: "95%", overflowY: "auto"}}>
+        <div ref={parent} style={{flex: "1 1 auto", minHeight: 0, overflowY: "auto"}}>
 		  <Document file={downloadUrl} onLoadSuccess={onLoadSuccess} options={options}>
             <div style={{ width, margin: "0 auto" }}>
               <Page pageNumber={page}
@@ -180,6 +172,18 @@ export default function FileViewer({ file, onSelect }) {
           </Document>
         </div>
       )}
-    </>
+
+      {pages > 1 && (
+        <div style={{ flexShrink: 0, padding: "10px 4px" }}>
+          <Form.Range
+            min={1}
+            max={pages}
+            value={page}
+            onChange={(e) => setPage(parseInt(e.target.value, 10))}
+            aria-label="Page"
+          />
+        </div>
+      )}
+    </div>
   );
 }
