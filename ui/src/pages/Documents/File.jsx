@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Button, ButtonGroup, Dropdown, Form } from "react-bootstrap";
 import Navbar from 'react-bootstrap/Navbar';
 import { FaChevronRight, FaChevronLeft, } from "react-icons/fa6";
-import { AiOutlineDownload } from "react-icons/ai";
+import { AiOutlineDownload, AiOutlineReload } from "react-icons/ai";
 import constants from "../../common/constants";
 
 import apiservice from "../../services/api.service"
@@ -117,6 +117,22 @@ export default function FileViewer({ file, onSelect }) {
     a.remove()
   }
 
+  // The browser keeps the pdf and the server checks if it is still the current one
+  // (so a big book opens at once). This fetches it again without any cache, e.g. to
+  // see the latest scribbles.
+  const [reloadKey, setReloadKey] = useState(0);
+  const [reloading, setReloading] = useState(false);
+  const onReload = () => {
+    setReloading(true);
+    fetch(downloadUrl, { cache: "reload" })
+      .then((r) => r.blob())
+      .catch(() => {})
+      .finally(() => {
+        setReloading(false);
+        setReloadKey((k) => k + 1);
+      });
+  };
+
   const onDownloadPdf = () => {
     apiservice.download(data.id)
       .then(blob => triggerDownload(blob, data.name + '.pdf'))
@@ -173,6 +189,16 @@ export default function FileViewer({ file, onSelect }) {
         )}
         <div style={{ flex: 1 }}></div>
 
+        <Button
+          size="sm"
+          variant="outline-secondary"
+          style={{ marginRight: '8px' }}
+          onClick={onReload}
+          disabled={reloading}
+          title="Reload without cache"
+          aria-label="Reload without cache"
+        ><AiOutlineReload /></Button>
+
         <Dropdown align="end">
           <Dropdown.Toggle size="sm" variant="secondary">
             <AiOutlineDownload />
@@ -188,7 +214,7 @@ export default function FileViewer({ file, onSelect }) {
 
       {file && (
         <div ref={parent} style={{flex: "1 1 auto", minHeight: 0, overflowY: "auto"}}>
-		  <Document file={downloadUrl} onLoadSuccess={onLoadSuccess} options={options}>
+		  <Document key={reloadKey} file={downloadUrl} onLoadSuccess={onLoadSuccess} options={options}>
             <div style={{ width, margin: "0 auto" }}>
               <Page pageNumber={page}
                 width={width}

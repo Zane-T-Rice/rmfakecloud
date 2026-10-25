@@ -134,15 +134,15 @@ func (fs *FileSystemStorage) Export(uid, docid string) (r io.ReadCloser, err err
 	}
 	reader, writer := io.Pipe()
 	go func() {
-		err = exporter.RenderRmapi(archive, writer, fs.templatesDir())
+		defer archive.Close()
+		// the reader gets the error, so a failed export isn't taken for a complete one
+		err := exporter.RenderRmapi(archive, writer, fs.templatesDir())
 		if err != nil {
 			log.Error(err)
-			writer.Close()
-			return
 		}
-		writer.Close()
+		writer.CloseWithError(err)
 	}()
-	return reader, err
+	return reader, nil
 }
 
 // UpdateBlobDocument updates metadata

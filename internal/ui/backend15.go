@@ -30,6 +30,16 @@ func (b *backend15) Export(uid, docid, exporttype string, opt storage.ExportOpti
 	return
 }
 
+// ExportKey identifies the current pdf of a document, see FileSystemStorage
+func (b *backend15) ExportKey(uid, docid string) (string, error) {
+	return b.blobHandler.ExportKey(uid, docid)
+}
+
+// ExportCached gives the pdf of a document from the cache when it is unchanged
+func (b *backend15) ExportCached(uid, docid string, refresh bool) (io.ReadCloser, string, error) {
+	return b.blobHandler.ExportCached(uid, docid, refresh)
+}
+
 func (b *backend15) CreateDocument(uid, filename, parent string, stream io.Reader) (doc *storage.Document, err error) {
 	doc, err = b.blobHandler.CreateBlobDocument(uid, filename, parent, stream)
 	return

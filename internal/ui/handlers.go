@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ddvk/rmfakecloud/internal/common"
@@ -262,6 +264,12 @@ func (app *ReactAppWrapper) listDocuments(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, tree)
 }
+// cachedExporter is a backend that can keep its pdf exports
+type cachedExporter interface {
+	ExportKey(uid, docid string) (string, error)
+	ExportCached(uid, docid string, refresh bool) (io.ReadCloser, string, error)
+}
+
 func (app *ReactAppWrapper) getDocument(c *gin.Context) {
 	uid := userID(c)
 	docid := common.ParamS(docIDParam, c)
@@ -271,6 +279,35 @@ func (app *ReactAppWrapper) getDocument(c *gin.Context) {
 
 	log.Info("exporting ", docid, " as ", exportType)
 	backend := app.getBackend(c)
+
+	// the pdf is cached while the document is unchanged, the browser keeps it too
+	// and asks if it is still good. A reload without cache (Cache-Control: no-cache
+	// in the request) renders it again.
+	if cached, ok := backend.(cachedExporter); ok && exportType == "pdf" {
+		refresh := strings.Contains(c.GetHeader("Cache-Control"), "no-cache")
+		if !refresh {
+			if key, err := cached.ExportKey(uid, docid); err == nil {
+				etag := `"` + key + `"`
+				c.Header("ETag", etag)
+				c.Header("Cache-Control", "private, no-cache")
+				if c.GetHeader("If-None-Match") == etag {
+					c.Status(http.StatusNotModified)
+					return
+				}
+			}
+		}
+		reader, key, err := cached.ExportCached(uid, docid, refresh)
+		if err != nil {
+			log.Error(err)
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+		defer reader.Close()
+		c.Header("ETag", `"`+key+`"`)
+		c.Header("Cache-Control", "private, no-cache")
+		c.DataFromReader(http.StatusOK, -1, "application/octet-stream", reader, nil)
+		return
+	}
 
 	reader, err := backend.Export(uid, docid, exportType, exportOption)
 	if err != nil {

@@ -51,6 +51,8 @@ type blobHandler interface {
 	CreateBlobFolder(uid, name, parent string) (doc *storage.Document, err error)
 	Export(uid, docid string) (io.ReadCloser, error)
 	ExportRmDoc(uid, docid string) (io.ReadCloser, error)
+	ExportKey(uid, docid string) (string, error)
+	ExportCached(uid, docid string, refresh bool) (io.ReadCloser, string, error)
 }
 
 type notificationHub interface {
