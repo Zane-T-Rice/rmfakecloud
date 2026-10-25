@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Container, Alert, Spinner, Button, Form, Collapse } from "react-bootstrap";
-import { BsGearFill, BsFullscreenExit, BsArrowCounterclockwise, BsArrowClockwise } from "react-icons/bs";
+import { Container, Alert, Spinner, Button, Form, Offcanvas, Badge } from "react-bootstrap";
+import { BsGearFill, BsFullscreenExit, BsArrowCounterclockwise, BsArrowClockwise, BsPeopleFill } from "react-icons/bs";
 import pako from "pako";
 import constants from "../../common/constants";
 
@@ -204,7 +204,8 @@ export default function ScreenShare() {
   const [errorMsg, setErrorMsg] = useState("");
   // who this screen share can be shared with: {active, users: [{id, allowed}]}
   const [shareInfo, setShareInfo] = useState({ active: false, users: [] });
-  // the list of users to share with is in a drawer, closed until it is needed
+  // the list of users to share with is in a drawer at the side, closed until it is
+  // needed
   const [shareOpen, setShareOpen] = useState(false);
   // screen shares others have allowed us to watch: [{ownerId, roomId}]
   const [sharedWithMe, setSharedWithMe] = useState([]);
@@ -751,39 +752,50 @@ export default function ScreenShare() {
       )}
 
       {!watchingRef.current && shareInfo.active && shareInfo.users.length > 0 && (
-        <div className="mb-3">
+        <>
+          {/* a button over the page, it takes no room in it */}
           <Button
-            size="sm"
-            variant="outline-secondary"
-            onClick={() => setShareOpen((open) => !open)}
-            aria-expanded={shareOpen}
-            aria-controls="share-drawer"
+            variant="secondary"
+            className="rounded-circle d-flex align-items-center justify-content-center shadow"
+            style={{ position: "fixed", right: 16, bottom: 16, width: 48, height: 48, zIndex: 1030 }}
+            onClick={() => setShareOpen(true)}
+            aria-label="Share with others"
+            title="Share with others"
           >
-            Share with others
-            {shareInfo.users.some((u) => u.allowed) &&
-              ` (${shareInfo.users.filter((u) => u.allowed).length})`}
-            {shareOpen ? " ▴" : " ▾"}
+            <BsPeopleFill />
+            {shareInfo.users.some((u) => u.allowed) && (
+              <Badge
+                pill
+                bg="success"
+                style={{ position: "absolute", top: -4, right: -4 }}
+              >
+                {shareInfo.users.filter((u) => u.allowed).length}
+              </Badge>
+            )}
           </Button>
-          <Collapse in={shareOpen}>
-            <div id="share-drawer">
-              <Alert variant="secondary" className="mt-2 mb-0">
-                <div className="mb-1">Let others watch this screen share (it ends with the share):</div>
-                <div className="d-flex flex-wrap gap-3">
-                  {shareInfo.users.map((u) => (
-                    <Form.Check
-                      key={u.id}
-                      type="switch"
-                      id={`share-with-${u.id}`}
-                      label={u.id}
-                      checked={u.allowed}
-                      onChange={(e) => setAllowed(u.id, e.target.checked)}
-                    />
-                  ))}
-                </div>
-              </Alert>
-            </div>
-          </Collapse>
-        </div>
+
+          {/* and the list slides in over the page from the right */}
+          <Offcanvas show={shareOpen} onHide={() => setShareOpen(false)} placement="end">
+            <Offcanvas.Header closeButton>
+              <Offcanvas.Title>Share with others</Offcanvas.Title>
+            </Offcanvas.Header>
+            <Offcanvas.Body>
+              <p>Let others watch this screen share. It ends with the share.</p>
+              <div className="d-flex flex-column gap-3">
+                {shareInfo.users.map((u) => (
+                  <Form.Check
+                    key={u.id}
+                    type="switch"
+                    id={`share-with-${u.id}`}
+                    label={u.id}
+                    checked={u.allowed}
+                    onChange={(e) => setAllowed(u.id, e.target.checked)}
+                  />
+                ))}
+              </div>
+            </Offcanvas.Body>
+          </Offcanvas>
+        </>
       )}
 
       <div
