@@ -172,6 +172,22 @@ function api(path, opts = {}) {
   });
 }
 
+// Chrome on a phone hides the address of the device behind a name like
+// 1f3c2d0e-....local (mDNS). The tablet can't use those (they crash it), so they
+// are left out of the answer: the browser still reaches the tablet from its real
+// address, the tablet learns it from the connectivity checks.
+function withoutMdnsCandidates(sdp) {
+  const isMdns = (line) =>
+    line.startsWith("a=candidate:") && /\s[^\s]+\.local\s/i.test(line);
+  const lines = sdp.split(/\r?\n/);
+  const kept = lines.filter((line) => !isMdns(line));
+  // never leave the answer without any candidate
+  if (!kept.some((line) => line.startsWith("a=candidate:"))) {
+    return sdp;
+  }
+  return kept.join("\r\n");
+}
+
 export default function ScreenShare() {
   const [status, setStatus] = useState(STATUS.WAITING);
   const [errorMsg, setErrorMsg] = useState("");
@@ -460,7 +476,7 @@ export default function ScreenShare() {
           targetClientId: offerMsg.clientId,
           payload: {
             type: "webtrc",
-            payload: { type: "answer", description: pc.localDescription.sdp },
+            payload: { type: "answer", description: withoutMdnsCandidates(pc.localDescription.sdp) },
           },
         }),
       });
