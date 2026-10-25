@@ -28,8 +28,8 @@ const (
 	// the Paper Pro shows a pdf at its real size, this many pixels per inch
 	PaperProDPI = 229.0
 	// small corrections to the ink on a pdf, in pixels
-	v6PdfOffsetX = 7.0
-	v6PdfOffsetY = 10.0
+	v6PdfOffsetX = 9.0
+	v6PdfOffsetY = 12.0
 
 	// template-only pages are this wide in points, the height follows the content
 	rmPageWidth  = 445.0
@@ -110,6 +110,25 @@ func templatePageHeight(data *rm.Rm, assumeV6 bool) float64 {
 	scale := rmPageWidth / w
 	needed := scale * math.Max(h, maxContentY(data)+pageBottomMargin)
 	return math.Max(rmPageHeight, needed)
+}
+
+// strokeWidthFactor scales the width of the strokes, 1 is the width in the file, which looks too heavy
+const strokeWidthFactor = 0.6
+
+// minStrokeWidth is the thinnest line drawn, in points
+const minStrokeWidth = 0.3
+
+// strokeWidth is the width of a line in points: the average width of its points,
+// which is what the tablet draws with, in the pixels of the device
+func strokeWidth(line rm.Line, scale float64) float64 {
+	var sum float64
+	for _, p := range line.Points {
+		sum += float64(p.Width)
+	}
+	if len(line.Points) == 0 || sum == 0 {
+		return float64(line.BrushSize / 10)
+	}
+	return math.Max(sum/float64(len(line.Points))*scale*strokeWidthFactor, minStrokeWidth)
 }
 
 // strokeColor is the color of a pen, they are the ones of the tablet
@@ -244,6 +263,9 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 
 		contentCreator := contentstream.NewContentCreator()
 		contentCreator.Add_q()
+		// like a pen, not a wire
+		contentCreator.AddOperand(contentstream.ContentStreamOperation{Operand: "J", Params: []core.PdfObject{core.MakeInteger(1)}})
+		contentCreator.AddOperand(contentstream.ContentStreamOperation{Operand: "j", Params: []core.PdfObject{core.MakeInteger(1)}})
 
 		for _, layer := range pageAnnotations.Data.Layers {
 			for _, line := range layer.Lines {
@@ -279,7 +301,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 						path = path.AppendPoint(draw.NewPoint(x1, c.Height()-y1))
 					}
 
-					contentCreator.Add_w(float64(line.BrushSize / 10))
+					contentCreator.Add_w(strokeWidth(line, scale))
 
 					r, g, b := strokeColor(line.BrushColor)
 					contentCreator.Add_RG(r, g, b)
