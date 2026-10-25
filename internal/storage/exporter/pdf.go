@@ -26,12 +26,12 @@ const (
 	PaperProWidth  = 1620
 	PaperProHeight = 2160
 	// the pixels per inch the ink of a pdf is drawn with. The screen is 229 dpi, but
-	// the end of long notes only lines up with about 227 (the tablet shows the pdf about
-	// 0.9% larger than its real size)
-	PaperProDPI = 227.0
+	// the end of long notes only lines up with about 228 (the tablet shows the pdf about
+	// 0.4% larger than its real size)
+	PaperProDPI = 228.0
 	// small corrections to the ink on a pdf, in pixels
-	v6PdfOffsetX = 3.0
-	v6PdfOffsetY = -3.0
+	v6PdfOffsetX = 2.0
+	v6PdfOffsetY = 4.0
 
 	// template-only pages are this wide in points, the height follows the content
 	rmPageWidth  = 445.0
