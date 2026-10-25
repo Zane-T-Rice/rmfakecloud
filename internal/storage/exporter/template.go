@@ -254,11 +254,21 @@ func (r *templateRenderer) path(it *templateItem, sc scope, tx, ty float64) erro
 	hasStroke := it.StrokeColor != "" || it.FillColor == ""
 	sr, sg, sb := defaultTemplateStrokeGray, defaultTemplateStrokeGray, defaultTemplateStrokeGray
 	if it.StrokeColor != "" {
-		if cr, cg, cb, ok := parseHexColor(it.StrokeColor); ok {
+		if cr, cg, cb, ca, ok := parseHexColor(it.StrokeColor); ok {
 			sr, sg, sb = cr, cg, cb
+			// a transparent stroke is no stroke
+			if ca == 0 {
+				hasStroke = false
+			}
 		}
 	}
-	fr, fg, fb, hasFill := parseHexColor(it.FillColor)
+	fr, fg, fb, fa, hasFill := parseHexColor(it.FillColor)
+	if fa == 0 {
+		hasFill = false
+	}
+	if !hasFill && !hasStroke {
+		return nil
+	}
 
 	r.cc.Add_w(strokeW * r.scale)
 	r.cc.Add_RG(sr, sg, sb)
@@ -360,16 +370,22 @@ func (r *templateRenderer) text(it *templateItem, sc scope, tx, ty float64) erro
 	return r.c.Draw(p)
 }
 
-func parseHexColor(s string) (r, g, b float64, ok bool) {
+// parseHexColor reads #rrggbb or #rrggbbaa
+func parseHexColor(s string) (r, g, b, a float64, ok bool) {
 	s = strings.TrimPrefix(s, "#")
-	if len(s) != 6 {
-		return 0, 0, 0, false
+	if len(s) != 6 && len(s) != 8 {
+		return 0, 0, 0, 0, false
 	}
 	v, err := strconv.ParseUint(s, 16, 32)
 	if err != nil {
-		return 0, 0, 0, false
+		return 0, 0, 0, 0, false
 	}
-	return float64(v>>16&0xff) / 255, float64(v>>8&0xff) / 255, float64(v&0xff) / 255, true
+	a = 1
+	if len(s) == 8 {
+		a = float64(v&0xff) / 255
+		v >>= 8
+	}
+	return float64(v>>16&0xff) / 255, float64(v>>8&0xff) / 255, float64(v&0xff) / 255, a, true
 }
 
 // scope holds the variables an expression can use

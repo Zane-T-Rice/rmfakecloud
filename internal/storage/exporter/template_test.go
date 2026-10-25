@@ -154,3 +154,26 @@ func TestRenderTallPageKeepsScreenSizeInExpressions(t *testing.T) {
 		t.Fatalf("got %d strokes, want a line per 62px row", got)
 	}
 }
+
+func TestRenderColors(t *testing.T) {
+	tpl := parseTemplate(t, `{
+		"items": [
+			{"type": "path", "fillColor": "#ffff00", "strokeColor": "#00000000", "data": ["M", 0, 0, "L", 10, 0, "L", 10, 10, "Z"]},
+			{"type": "path", "strokeColor": "#ff0000", "data": ["M", 0, 0, "L", 10, 10]},
+			{"type": "path", "strokeColor": "#00000000", "data": ["M", 0, 0, "L", 10, 10]}
+		]
+	}`)
+	c := creator.New()
+	c.NewPage()
+	ops, err := tpl.Render(c, 100, 100, 100, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the filled shape without a border (f), the red line (S), nothing for the invisible one
+	if strings.Count(ops, "\nf") != 1 || strokes(ops) != 1 {
+		t.Fatalf("unexpected painting:\n%s", ops)
+	}
+	if !strings.Contains(ops, "1 0 0 RG") || !strings.Contains(ops, "1 1 0 rg") {
+		t.Fatalf("colors not set:\n%s", ops)
+	}
+}
