@@ -12,7 +12,7 @@ import (
 )
 
 // bump it when the rendering of the exports changes
-const exportCacheVersion = "10"
+const exportCacheVersion = "11"
 
 // templatesStamp changes when a template is added, removed or edited
 func (fs *FileSystemStorage) templatesStamp() string {

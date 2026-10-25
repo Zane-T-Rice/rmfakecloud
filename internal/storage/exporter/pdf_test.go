@@ -56,11 +56,12 @@ func TestPagesWithoutInkFollowTheDocument(t *testing.T) {
 }
 
 func TestV6PdfTransform(t *testing.T) {
-	scale, xShift, yShift := v6PdfTransform(630)
+	scale, xShift, yShift, stretch := v6PdfTransform(630)
 	// what the decoder gives for the middle of the page (x=0) is 702
 	mid := rm.Point{X: float32(DeviceWidth) / 2}
 	x, y := normalized(mid, scale, xShift, yShift)
-	if want := 315 + v6PdfOffsetX*scale; x < want-0.01 || x > want+0.01 {
+	x = stretchAround(x, 315, stretch)
+	if want := 315 + v6PdfOffsetX*scale*stretch; x < want-0.01 || x > want+0.01 {
 		t.Fatalf("middle of the page at %v, want %v", x, want)
 	}
 	if want := v6PdfOffsetY * scale; y < want-0.01 || y > want+0.01 {
@@ -85,5 +86,17 @@ func TestStrokeWidth(t *testing.T) {
 	// no width in the points, what it was before
 	if got := strokeWidth(rm.Line{BrushSize: 2, Points: []rm.Point{{}}}, scale); got < 0.199 || got > 0.201 {
 		t.Fatalf("no widths = %v, want 0.2", got)
+	}
+}
+
+func TestStretchAround(t *testing.T) {
+	if got := stretchAround(315, 315, 1.1); got != 315 {
+		t.Fatalf("the middle moved to %v", got)
+	}
+	if got := stretchAround(415, 315, 1.1); got < 424.99 || got > 425.01 {
+		t.Fatalf("100pt from the middle at %v, want 425", got)
+	}
+	if got := stretchAround(215, 315, 1.1); got < 204.99 || got > 205.01 {
+		t.Fatalf("-100pt from the middle at %v, want 205", got)
 	}
 }
