@@ -120,10 +120,6 @@ code {
 }
 
 @media (max-width: 768px) {
-  .documents-tree {
-    max-height: 25vh !important;
-  }
-
   // phones: the preview is the page, the file tree is a drawer
   body .container-fluid {
     margin: 0 10px !important;
