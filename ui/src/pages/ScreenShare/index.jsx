@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Container, Alert, Spinner, Button, Form } from "react-bootstrap";
+import { Container, Alert, Spinner, Button, Form, Collapse } from "react-bootstrap";
 import { BsGearFill, BsFullscreenExit, BsArrowCounterclockwise, BsArrowClockwise } from "react-icons/bs";
 import pako from "pako";
 import constants from "../../common/constants";
@@ -195,6 +195,8 @@ export default function ScreenShare() {
   const [errorMsg, setErrorMsg] = useState("");
   // who this screen share can be shared with: {active, users: [{id, allowed}]}
   const [shareInfo, setShareInfo] = useState({ active: false, users: [] });
+  // the list of users to share with is in a drawer, closed until it is needed
+  const [shareOpen, setShareOpen] = useState(false);
   // screen shares others have allowed us to watch: [{ownerId, roomId}]
   const [sharedWithMe, setSharedWithMe] = useState([]);
   // whose screen share we are watching, empty for our own
@@ -703,21 +705,39 @@ export default function ScreenShare() {
       )}
 
       {!watchingRef.current && shareInfo.active && shareInfo.users.length > 0 && (
-        <Alert variant="secondary">
-          <div className="mb-1">Let others watch this screen share (it ends with the share):</div>
-          <div className="d-flex flex-wrap gap-3">
-            {shareInfo.users.map((u) => (
-              <Form.Check
-                key={u.id}
-                type="switch"
-                id={`share-with-${u.id}`}
-                label={u.id}
-                checked={u.allowed}
-                onChange={(e) => setAllowed(u.id, e.target.checked)}
-              />
-            ))}
-          </div>
-        </Alert>
+        <div className="mb-3">
+          <Button
+            size="sm"
+            variant="outline-secondary"
+            onClick={() => setShareOpen((open) => !open)}
+            aria-expanded={shareOpen}
+            aria-controls="share-drawer"
+          >
+            Share with others
+            {shareInfo.users.some((u) => u.allowed) &&
+              ` (${shareInfo.users.filter((u) => u.allowed).length})`}
+            {shareOpen ? " ▴" : " ▾"}
+          </Button>
+          <Collapse in={shareOpen}>
+            <div id="share-drawer">
+              <Alert variant="secondary" className="mt-2 mb-0">
+                <div className="mb-1">Let others watch this screen share (it ends with the share):</div>
+                <div className="d-flex flex-wrap gap-3">
+                  {shareInfo.users.map((u) => (
+                    <Form.Check
+                      key={u.id}
+                      type="switch"
+                      id={`share-with-${u.id}`}
+                      label={u.id}
+                      checked={u.allowed}
+                      onChange={(e) => setAllowed(u.id, e.target.checked)}
+                    />
+                  ))}
+                </div>
+              </Alert>
+            </div>
+          </Collapse>
+        </div>
       )}
 
       <div
