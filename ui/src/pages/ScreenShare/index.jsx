@@ -124,6 +124,8 @@ function parseMessage(data) {
 }
 
 const STATUS = {
+  // opened, not asked to connect yet
+  IDLE: "idle",
   WAITING: "waiting",
   CONNECTING: "connecting",
   STREAMING: "streaming",
@@ -189,7 +191,7 @@ function withoutMdnsCandidates(sdp) {
 }
 
 export default function ScreenShare() {
-  const [status, setStatus] = useState(STATUS.WAITING);
+  const [status, setStatus] = useState(STATUS.IDLE);
   const [errorMsg, setErrorMsg] = useState("");
   // who this screen share can be shared with: {active, users: [{id, allowed}]}
   const [shareInfo, setShareInfo] = useState({ active: false, users: [] });
@@ -661,6 +663,15 @@ export default function ScreenShare() {
               Reconnect
             </Button>
           )}
+        </Alert>
+      )}
+
+      {status === STATUS.IDLE && (
+        <Alert variant="info">
+          Not connected.
+          <Button variant="primary" size="sm" className="ms-3" onClick={reconnect}>
+            Connect
+          </Button>
         </Alert>
       )}
 
