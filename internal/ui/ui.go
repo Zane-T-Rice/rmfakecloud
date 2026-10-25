@@ -78,6 +78,7 @@ type ReactAppWrapper struct {
 	passcodeStore passcodestore.Store
 	backends      map[common.SyncVersion]backend
 	roomManager   *screenshare.RoomManager
+	relay         *screenshare.Relay
 	mqtt          mqttBridge
 }
 
@@ -123,6 +124,7 @@ func New(cfg *config.Config,
 		roomManager: roomManager,
 		mqtt:        mqttBroker,
 	}
+	staticWrapper.relay = screenshare.NewRelay(roomManager, relaySignaler{app: &staticWrapper}, cfg.ICEServers)
 	return &staticWrapper
 }
 

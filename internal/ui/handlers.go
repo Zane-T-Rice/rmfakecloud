@@ -12,11 +12,11 @@ import (
 	"github.com/ddvk/rmfakecloud/internal/common"
 	"github.com/ddvk/rmfakecloud/internal/integrations"
 	"github.com/ddvk/rmfakecloud/internal/model"
-	"github.com/ddvk/rmfakecloud/internal/screenshare"
 	"github.com/ddvk/rmfakecloud/internal/storage"
 	"github.com/ddvk/rmfakecloud/internal/storage/models"
 	"github.com/ddvk/rmfakecloud/internal/ui/viewmodel"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -844,68 +844,9 @@ func (app *ReactAppWrapper) screenshareGetRoom(c *gin.Context) {
 	})
 }
 
-// signalingType is the type of a webrtc signaling message of the tablet: offer,
-// candidate...
-func signalingType(m screenshare.Message) string {
-	var p struct {
-		Type    string `json:"type"`
-		Payload struct {
-			Type string `json:"type"`
-		} `json:"payload"`
-	}
-	if json.Unmarshal(m.Payload, &p) != nil {
-		return ""
-	}
-	if p.Type == "webtrc" && p.Payload.Type != "" {
-		return p.Payload.Type
-	}
-	return p.Type
-}
-
-// candidateWait is how long to wait for the tablet's candidates after its offer
-const candidateWait = 4 * time.Second
-
-// waitForCandidates holds the offer back until the tablet's ice candidates have
-// arrived with it. The offer has none in it, they follow as messages, and a
-// browser given the offer alone has no address to connect to.
-func (app *ReactAppWrapper) waitForCandidates(roomID string, msgs []screenshare.Message) []screenshare.Message {
-	has := func(msgs []screenshare.Message, t string) bool {
-		for _, m := range msgs {
-			if signalingType(m) == t {
-				return true
-			}
-		}
-		return false
-	}
-	if !has(msgs, "offer") {
-		return msgs
-	}
-
-	deadline := time.Now().Add(candidateWait)
-	for !has(msgs, "candidate") && time.Now().Before(deadline) {
-		time.Sleep(100 * time.Millisecond)
-		msgs = app.roomManager.GetMessages(roomID, 1)
-	}
-	if has(msgs, "candidate") {
-		// the others follow close behind the first
-		time.Sleep(300 * time.Millisecond)
-		msgs = app.roomManager.GetMessages(roomID, 1)
-	} else {
-		log.Warn("Screenshare: no candidates from the tablet with its offer in room ", roomID)
-	}
-	return msgs
-}
-
-func (app *ReactAppWrapper) screenshareGetOffer(c *gin.Context) {
-	uid := userID(c)
-	clientID := c.GetString(browserIDContextKey)
-
-	roomID := app.roomManager.FindActiveRoom(uid)
-	if roomID == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "no active room"})
-		return
-	}
-
+// requestOffer asks the tablet of the user for an offer for the client (a browser
+// or the relay)
+func (app *ReactAppWrapper) requestOffer(uid, roomID, clientID string) {
 	app.roomManager.AddBroadcast(roomID, clientID, json.RawMessage(`{"type":"request-offer","clientId":"`+clientID+`"}`))
 
 	var inner map[string]interface{}
@@ -926,13 +867,61 @@ func (app *ReactAppWrapper) screenshareGetOffer(c *gin.Context) {
 			}
 		}
 	}
+}
+
+// sendSignal sends a signaling message (the answer) of the client to the tablet
+func (app *ReactAppWrapper) sendSignal(uid, roomID, clientID, targetClientID string, payload json.RawMessage) {
+	app.roomManager.AddDirect(roomID, clientID, targetClientID, payload)
+
+	var inner map[string]interface{}
+	json.Unmarshal(payload, &inner)
+	if inner == nil {
+		inner = map[string]interface{}{}
+	}
+	inner["sourceDeviceID"] = clientID
+	app.h.NotifyScreenshare(uid, clientID, inner)
+
+	if app.mqtt != nil && app.mqtt.HasConnectedClient(uid) {
+		mqttMsg, _ := json.Marshal(map[string]interface{}{
+			"type":     "direct",
+			"clientId": clientID,
+			"payload":  payload,
+		})
+		app.mqtt.PublishSignaling(uid, targetClientID, mqttMsg)
+	}
+}
+
+// relaySignaler is how the relay reaches the tablet
+type relaySignaler struct {
+	app *ReactAppWrapper
+}
+
+func (r relaySignaler) RequestOffer(uid, roomID, clientID string) {
+	r.app.requestOffer(uid, roomID, clientID)
+}
+
+func (r relaySignaler) SendDirect(uid, roomID, clientID, targetClientID string, payload json.RawMessage) {
+	r.app.sendSignal(uid, roomID, clientID, targetClientID, payload)
+}
+
+func (app *ReactAppWrapper) screenshareGetOffer(c *gin.Context) {
+	uid := userID(c)
+	clientID := c.GetString(browserIDContextKey)
+
+	roomID := app.roomManager.FindActiveRoom(uid)
+	if roomID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no active room"})
+		return
+	}
+
+	app.requestOffer(uid, roomID, clientID)
 
 	msgs := app.roomManager.WaitForMessages(roomID, 1, 30*time.Second)
 	if msgs == nil {
 		c.JSON(http.StatusGatewayTimeout, gin.H{"error": "timeout waiting for offer"})
 		return
 	}
-	msgs = app.waitForCandidates(roomID, msgs)
+	msgs = app.roomManager.WaitForCandidates(roomID, msgs)
 
 	c.JSON(http.StatusOK, gin.H{
 		"roomId":     roomID,
@@ -960,23 +949,61 @@ func (app *ReactAppWrapper) screenshareSendAnswer(c *gin.Context) {
 		return
 	}
 
-	app.roomManager.AddDirect(roomID, clientID, msg.TargetClientID, msg.Payload)
-
-	var inner map[string]interface{}
-	json.Unmarshal(msg.Payload, &inner)
-	inner["sourceDeviceID"] = clientID
-	app.h.NotifyScreenshare(uid, clientID, inner)
-
-	if app.mqtt != nil && app.mqtt.HasConnectedClient(uid) {
-		mqttMsg, _ := json.Marshal(map[string]interface{}{
-			"type":     "direct",
-			"clientId": clientID,
-			"payload":  json.RawMessage(msg.Payload),
-		})
-		app.mqtt.PublishSignaling(uid, msg.TargetClientID, mqttMsg)
-	}
+	app.sendSignal(uid, roomID, clientID, msg.TargetClientID, msg.Payload)
 
 	c.Status(http.StatusAccepted)
+}
+
+// streamUpgrader: the page is on the same origin, which is what the default checks
+var streamUpgrader = websocket.Upgrader{WriteBufferSize: 64 << 10}
+
+// screenshareStream gives the screen of the tablet to a browser over a websocket:
+// the binary messages are those of the tablet's data channel. The relay holds the
+// one connection to the tablet for all the browsers of the user. A text message
+// {"error": ...} says why there is nothing to see.
+func (app *ReactAppWrapper) screenshareStream(c *gin.Context) {
+	uid := userID(c)
+
+	conn, err := streamUpgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Warn("screenshare stream: ", err)
+		return
+	}
+	defer conn.Close()
+
+	// the browser says nothing, this is how its leaving shows
+	gone := make(chan struct{})
+	go func() {
+		defer close(gone)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+
+	sub, err := app.relay.Subscribe(uid)
+	if err != nil {
+		conn.WriteJSON(gin.H{"error": err.Error()})
+		return
+	}
+	defer sub.Close()
+
+	for {
+		select {
+		case msg, ok := <-sub.Messages:
+			if !ok {
+				conn.WriteJSON(gin.H{"error": "the screen share has ended"})
+				return
+			}
+			conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
+			if err := conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+				return
+			}
+		case <-gone:
+			return
+		}
+	}
 }
 
 func (app *ReactAppWrapper) screenshareDeleteRoom(c *gin.Context) {

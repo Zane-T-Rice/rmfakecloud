@@ -268,16 +268,128 @@ export default function ScreenShare() {
   const videoRef = useRef(null);
   const pcRef = useRef(null);
   const dcRef = useRef(null);
+  // the websocket to the server when the picture comes through it
+  const wsRef = useRef(null);
   const roomIdRef = useRef(null);
   const tabletClientIdRef = useRef(null);
 
   const cleanup = useCallback(() => {
     dcRef.current = null;
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;
     }
     roomIdRef.current = null;
+  }, []);
+
+  // The messages of the tablet, from its data channel or through the server: draws
+  // the picture. Gives the function to call with each message (an ArrayBuffer).
+  const createMessageHandler = useCallback(() => {
+    let screenWidth = 0;
+    let screenHeight = 0;
+    const canvas = videoRef.current;
+    let ctx = null;
+    let lastPenX = 0;
+    let lastPenY = 0;
+    let rotation = 0;
+    const assembler = new FrameAssembler();
+
+    function updateCursor() {
+      const cursor = document.getElementById("pen-cursor");
+      if (!cursor || !canvas) return;
+      if (lastPenX === 0 && lastPenY === 0) {
+        cursor.style.display = "none";
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const cw = canvas.width;
+      const ch = canvas.height;
+      const rot = ((manualRotationRef.current % 360) + 360) % 360;
+      const isLandscape = rot === 90 || rot === 270;
+      const renderedW = isLandscape ? rect.height : rect.width;
+      const renderedH = isLandscape ? rect.width : rect.height;
+      const scaleX = renderedW / cw;
+      const scaleY = renderedH / ch;
+
+      const cx = (lastPenX - cw / 2) * scaleX;
+      const cy = (lastPenY - ch / 2) * scaleY;
+
+      const rad = rot * Math.PI / 180;
+      const rx = cx * Math.cos(rad) - cy * Math.sin(rad);
+      const ry = cx * Math.sin(rad) + cy * Math.cos(rad);
+
+      const screenX = rect.left + rect.width / 2 + rx;
+      const screenY = rect.top + rect.height / 2 + ry;
+
+      cursor.style.display = "block";
+      cursor.style.left = (screenX - 4) + "px";
+      cursor.style.top = (screenY - 4) + "px";
+    }
+
+    return (data) => {
+
+      const complete = assembler.process(data);
+      if (!complete) return;
+
+      try {
+        const msg = parseMessage(complete);
+        switch (msg.type) {
+          case MSG.HANDSHAKE: {
+            screenWidth = msg.width;
+            screenHeight = msg.height;
+            if (canvas) {
+              canvas.width = screenWidth;
+              canvas.height = screenHeight;
+              ctx = canvas.getContext("2d", { willReadFrequently: true });
+            }
+            setStatus(STATUS.STREAMING);
+            break;
+          }
+          case MSG.FRAMEBUFFER: {
+            if (!ctx) break;
+            for (const rect of msg.rects) {
+              const { width: w, height: h } = rect.imageData;
+              if (rect.x === 0 && rect.y === 0 &&
+                  w >= screenWidth * 0.9 && h >= screenHeight * 0.9) {
+                screenWidth = w;
+                screenHeight = h;
+                canvas.width = screenWidth;
+                canvas.height = screenHeight;
+              }
+              ctx.putImageData(rect.imageData, rect.x, rect.y);
+            }
+            break;
+          }
+          case MSG.CURSOR: {
+            if (!ctx) break;
+            lastPenX = msg.x;
+            lastPenY = msg.y;
+            updateCursor();
+            break;
+          }
+          case MSG.ROTATION: {
+            const newRotation = msg.degrees;
+            if (newRotation !== rotation) {
+              const prev = rotation;
+              rotation = newRotation;
+              setManualRotation(r => r + ((newRotation - prev + 540) % 360 - 180));
+            }
+            break;
+          }
+          case MSG.SHUTDOWN:
+          case MSG.PING:
+            break;
+        }
+      } catch (err) {
+        console.error("[screenshare] message error:", err);
+        assembler.reset();
+      }
+    };
   }, []);
 
   const setupPeerConnection = useCallback(
@@ -301,46 +413,7 @@ export default function ScreenShare() {
         dc.binaryType = "arraybuffer";
         dcRef.current = dc;
 
-        let screenWidth = 0;
-        let screenHeight = 0;
-        const canvas = videoRef.current;
-        let ctx = null;
-        let lastPenX = 0;
-        let lastPenY = 0;
-        let rotation = 0;
-        const assembler = new FrameAssembler();
-
-        function updateCursor() {
-          const cursor = document.getElementById("pen-cursor");
-          if (!cursor || !canvas) return;
-          if (lastPenX === 0 && lastPenY === 0) {
-            cursor.style.display = "none";
-            return;
-          }
-          const rect = canvas.getBoundingClientRect();
-          const cw = canvas.width;
-          const ch = canvas.height;
-          const rot = ((manualRotationRef.current % 360) + 360) % 360;
-          const isLandscape = rot === 90 || rot === 270;
-          const renderedW = isLandscape ? rect.height : rect.width;
-          const renderedH = isLandscape ? rect.width : rect.height;
-          const scaleX = renderedW / cw;
-          const scaleY = renderedH / ch;
-
-          const cx = (lastPenX - cw / 2) * scaleX;
-          const cy = (lastPenY - ch / 2) * scaleY;
-
-          const rad = rot * Math.PI / 180;
-          const rx = cx * Math.cos(rad) - cy * Math.sin(rad);
-          const ry = cx * Math.sin(rad) + cy * Math.cos(rad);
-
-          const screenX = rect.left + rect.width / 2 + rx;
-          const screenY = rect.top + rect.height / 2 + ry;
-
-          cursor.style.display = "block";
-          cursor.style.left = (screenX - 4) + "px";
-          cursor.style.top = (screenY - 4) + "px";
-        }
+        const handle = createMessageHandler();
 
         dc.onopen = () => {
           const header = new TextEncoder().encode("reMarkable");
@@ -359,65 +432,7 @@ export default function ScreenShare() {
         };
 
         dc.onmessage = (e) => {
-          const data = e.data;
-          if (!(data instanceof ArrayBuffer)) return;
-
-          const complete = assembler.process(data);
-          if (!complete) return;
-
-          try {
-            const msg = parseMessage(complete);
-            switch (msg.type) {
-              case MSG.HANDSHAKE: {
-                screenWidth = msg.width;
-                screenHeight = msg.height;
-                if (canvas) {
-                  canvas.width = screenWidth;
-                  canvas.height = screenHeight;
-                  ctx = canvas.getContext("2d", { willReadFrequently: true });
-                }
-                setStatus(STATUS.STREAMING);
-                break;
-              }
-              case MSG.FRAMEBUFFER: {
-                if (!ctx) break;
-                for (const rect of msg.rects) {
-                  const { width: w, height: h } = rect.imageData;
-                  if (rect.x === 0 && rect.y === 0 &&
-                      w >= screenWidth * 0.9 && h >= screenHeight * 0.9) {
-                    screenWidth = w;
-                    screenHeight = h;
-                    canvas.width = screenWidth;
-                    canvas.height = screenHeight;
-                  }
-                  ctx.putImageData(rect.imageData, rect.x, rect.y);
-                }
-                break;
-              }
-              case MSG.CURSOR: {
-                if (!ctx) break;
-                lastPenX = msg.x;
-                lastPenY = msg.y;
-                updateCursor();
-                break;
-              }
-              case MSG.ROTATION: {
-                const newRotation = msg.degrees;
-                if (newRotation !== rotation) {
-                  const prev = rotation;
-                  rotation = newRotation;
-                  setManualRotation(r => r + ((newRotation - prev + 540) % 360 - 180));
-                }
-                break;
-              }
-              case MSG.SHUTDOWN:
-              case MSG.PING:
-                break;
-            }
-          } catch (err) {
-            console.error("[screenshare] message error:", err);
-            assembler.reset();
-          }
+          if (e.data instanceof ArrayBuffer) handle(e.data);
         };
 
         dc.onclose = () => {
@@ -461,12 +476,69 @@ export default function ScreenShare() {
 
       return pc;
     },
-    [cleanup, addDiag]
+    [cleanup, addDiag, createMessageHandler]
+  );
+
+  // The picture through the server, which is the one that connects to the tablet
+  // and gives it to every browser: this works from where the browser can't reach
+  // the tablet (a phone on Wi-Fi) and with several browsers at once. Resolves true
+  // once the picture is coming, false when the server can't (then the browser
+  // connects to the tablet by itself).
+  const connectRelay = useCallback(
+    () =>
+      new Promise((resolve) => {
+        const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+        const ws = new WebSocket(
+          `${scheme}://${window.location.host}${constants.ROOT_URL}/screenshare/stream`
+        );
+        ws.binaryType = "arraybuffer";
+        wsRef.current = ws;
+        const handle = createMessageHandler();
+        let streaming = false;
+
+        ws.onmessage = (e) => {
+          if (typeof e.data === "string") {
+            let msg = {};
+            try {
+              msg = JSON.parse(e.data);
+            } catch (err) {
+              // not for us
+            }
+            if (msg.error) {
+              addDiag("server: " + msg.error);
+              if (!streaming) resolve(false);
+            }
+            return;
+          }
+          if (!streaming) {
+            streaming = true;
+            addDiag("the picture comes through the server");
+            resolve(true);
+          }
+          handle(e.data);
+        };
+        ws.onerror = () => {
+          addDiag("server: the stream can't be opened");
+          if (!streaming) resolve(false);
+        };
+        ws.onclose = () => {
+          if (wsRef.current === ws) wsRef.current = null;
+          if (!streaming) {
+            resolve(false);
+          } else if (!disconnectedRef.current) {
+            setStatus(STATUS.WAITING);
+          }
+        };
+      }),
+    [createMessageHandler, addDiag]
   );
 
   const joinRoom = useCallback(async () => {
     try {
       setStatus(STATUS.CONNECTING);
+
+      if (await connectRelay()) return;
+      addDiag("connecting to the tablet directly");
 
       const offerRes = await api("offer");
       if (!offerRes.ok) throw new Error("Failed to get offer from device");
@@ -547,7 +619,7 @@ export default function ScreenShare() {
       setErrorMsg(e.message);
       setStatus(STATUS.ERROR);
     }
-  }, [setupPeerConnection, addDiag]);
+  }, [setupPeerConnection, addDiag, connectRelay]);
 
   useEffect(() => {
     if (status !== STATUS.WAITING) return;
