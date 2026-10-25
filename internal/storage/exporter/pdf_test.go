@@ -54,3 +54,20 @@ func TestPagesWithoutInkFollowTheDocument(t *testing.T) {
 		t.Fatalf("blank page in a v6 document = %vx%v", w, h)
 	}
 }
+
+func TestV6PdfTransform(t *testing.T) {
+	scale, shift := v6PdfTransform(630)
+	// what the decoder gives for the middle of the page (x=0) is 702
+	mid := rm.Point{X: float32(DeviceWidth) / 2}
+	x, y := normalized(mid, scale, shift)
+	if x < 314.9 || x > 315.1 {
+		t.Fatalf("middle of the page at %v, want 315", x)
+	}
+	if y != 0 {
+		t.Fatalf("y = %v", y)
+	}
+	// the top of the page is y=0 and 229 pixels are an inch
+	if _, y := normalized(rm.Point{Y: 229}, scale, shift); y < 71.99 || y > 72.01 {
+		t.Fatalf("229px = %vpt, want 72", y)
+	}
+}

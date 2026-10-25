@@ -25,6 +25,8 @@ const (
 	// Paper Pro screen, used by v6 files
 	PaperProWidth  = 1620
 	PaperProHeight = 2160
+	// the Paper Pro shows a pdf at its real size, this many pixels per inch
+	PaperProDPI = 229.0
 
 	// template-only pages are this wide in points, the height follows the content
 	rmPageWidth  = 445.0
@@ -107,6 +109,56 @@ func templatePageHeight(data *rm.Rm, assumeV6 bool) float64 {
 	return math.Max(rmPageHeight, needed)
 }
 
+// strokeColor is the color of a pen, they are the ones of the tablet
+func strokeColor(c rm.BrushColor) (r, g, b float64) {
+	switch c {
+	case rm.Grey, rm.GreyOverlap:
+		return 0.5, 0.5, 0.5
+	case rm.White:
+		return 1, 1, 1
+	case rm.Blue:
+		return 0.1, 0.25, 0.85
+	case rm.Red:
+		return 0.85, 0.1, 0.1
+	case rm.Green2:
+		return 0.1, 0.6, 0.25
+	case rm.Cyan:
+		return 0.0, 0.7, 0.85
+	case rm.Magenta:
+		return 0.85, 0.1, 0.7
+	case rm.Yellow2:
+		return 0.95, 0.8, 0.0
+	}
+	// black, and the colors we don't know
+	return 0, 0, 0
+}
+
+// highlightColor is the color of a highlighter, yellow unless it has another
+func highlightColor(c rm.BrushColor) (r, g, b float64) {
+	switch c {
+	case rm.HighlightGreen:
+		return 0.5, 1, 0.4
+	case rm.HighlightPink:
+		return 1, 0.5, 0.8
+	case rm.Blue, rm.Cyan:
+		return 0.4, 0.8, 1
+	case rm.Red, rm.Magenta:
+		return 1, 0.4, 0.6
+	case rm.Green2:
+		return 0.5, 1, 0.4
+	}
+	return 1, 1, 0
+}
+
+// v6PdfTransform gives the scale (points per pixel) and the x shift (pixels, before
+// scaling) of the ink on a pdf page of the given width. The Paper Pro shows the pdf
+// at its real size, centered on x (0 is the middle of the page) with the top of the
+// page at y=0. The decoded x is 1404/2 off from the middle, see v6XCorrection.
+func v6PdfTransform(pageWidth float64) (scale, xShift float64) {
+	scale = 72.0 / PaperProDPI
+	return scale, pageWidth/2/scale - float64(DeviceWidth)/2
+}
+
 func normalized(p1 rm.Point, ratioX float64, xShift float64) (float64, float64) {
 	return (float64(p1.X) + xShift) * ratioX, float64(p1.Y) * ratioX
 }
@@ -166,6 +218,9 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 		} else {
 			scale = c.Height() / deviceH
 		}
+		if !p.template && pageAnnotations.Data != nil && pageAnnotations.Data.Version == rm.V6 {
+			scale, xShift = v6PdfTransform(c.Width())
+		}
 		if page == nil {
 			logrus.Fatal("page is null")
 		}
@@ -202,7 +257,8 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 					y1 += width / 2
 
 					lineDef := annotator.LineAnnotationDef{X1: x1 - 1, Y1: c.Height() - y1, X2: x2, Y2: c.Height() - y1}
-					lineDef.LineColor = pdf.NewPdfColorDeviceRGB(1.0, 1.0, 0.0) //yellow
+					hr, hg, hb := highlightColor(line.BrushColor)
+					lineDef.LineColor = pdf.NewPdfColorDeviceRGB(hr, hg, hb)
 					lineDef.Opacity = 0.5
 					lineDef.LineWidth = width
 					ann, err := annotator.CreateLineAnnotation(lineDef)
@@ -219,14 +275,8 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 
 					contentCreator.Add_w(float64(line.BrushSize / 10))
 
-					switch line.BrushColor {
-					case rm.Black:
-						contentCreator.Add_rg(1.0, 1.0, 1.0)
-					case rm.White:
-						contentCreator.Add_rg(0.0, 0.0, 0.0)
-					case rm.Grey:
-						contentCreator.Add_rg(0.8, 0.8, 0.8)
-					}
+					r, g, b := strokeColor(line.BrushColor)
+					contentCreator.Add_RG(r, g, b)
 
 					//TODO: use bezier
 					draw.DrawPathWithCreator(path, contentCreator)
