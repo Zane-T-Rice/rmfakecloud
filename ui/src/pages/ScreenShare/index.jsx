@@ -125,7 +125,7 @@ function parseMessage(data) {
 
 // How long to wait for the tablet to start sharing before giving up, and being
 // idle again until Connect is pressed
-const WAIT_TIMEOUT_MS = 2 * 60 * 1000;
+const WAIT_TIMEOUT_MS = 10 * 1000;
 
 const STATUS = {
   // opened, not asked to connect yet
@@ -676,19 +676,17 @@ export default function ScreenShare() {
     <Container className="mt-4">
       {status === STATUS.ERROR && (
         <Alert variant="info">
-          {errorMsg}
-          {disconnectedRef.current && (
-            <Button variant="outline-primary" size="sm" className="ms-3" onClick={reconnect}>
-              Reconnect
-            </Button>
-          )}
+          <div>{errorMsg}</div>
+          <Button variant="primary" size="sm" className="mt-2" onClick={reconnect}>
+            Connect
+          </Button>
         </Alert>
       )}
 
       {status === STATUS.IDLE && (
         <Alert variant="info">
-          Not connected.{idleNote && <> {idleNote}</>}
-          <Button variant="primary" size="sm" className="ms-3" onClick={reconnect}>
+          <div>Not connected.{idleNote && <> {idleNote}</>}</div>
+          <Button variant="primary" size="sm" className="mt-2" onClick={reconnect}>
             Connect
           </Button>
         </Alert>
