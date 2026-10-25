@@ -128,7 +128,7 @@ function parseMessage(data) {
 const WAIT_TIMEOUT_MS = 10 * 1000;
 
 // How long a connection may take once there is a share to join
-const CONNECT_TIMEOUT_MS = 30 * 1000;
+const CONNECT_TIMEOUT_MS = 10 * 1000;
 
 const STATUS = {
   // opened, not asked to connect yet

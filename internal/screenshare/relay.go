@@ -353,6 +353,13 @@ func (s *session) connect() error {
 			s.handle(append([]byte(nil), m.Data...))
 		})
 		dc.OnClose(func() {
+			// The tablet does not say it has stopped sharing, closing the channel
+			// while the connection was fine is how it shows. Then the share is over
+			// now, for everyone, not when its keepalives have stopped for a while.
+			if !s.isDone() && pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
+				log.Infof("Screenshare relay of %s: the tablet stopped sharing, ending room %s", s.uid, roomID)
+				s.relay.rooms.DeleteRoom(roomID)
+			}
 			s.fail(errors.New("the tablet closed the data channel"))
 		})
 	})

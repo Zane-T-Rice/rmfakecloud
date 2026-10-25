@@ -60,7 +60,11 @@ func (rm *RoomManager) SharedWith(userID string) []SharedRoom {
 	defer rm.mu.RUnlock()
 
 	newest := make(map[string]*Room)
+	now := time.Now().UTC()
 	for _, room := range rm.rooms {
+		if !room.live(now) {
+			continue
+		}
 		if cur := newest[room.ownerUserID]; cur == nil || room.CreatedAt.After(cur.CreatedAt) {
 			newest[room.ownerUserID] = room
 		}
@@ -85,8 +89,9 @@ func (rm *RoomManager) CanWatch(ownerID, viewerID string) bool {
 	defer rm.mu.RUnlock()
 
 	var newest *Room
+	now := time.Now().UTC()
 	for _, room := range rm.rooms {
-		if room.ownerUserID == ownerID && (newest == nil || room.CreatedAt.After(newest.CreatedAt)) {
+		if room.ownerUserID == ownerID && room.live(now) && (newest == nil || room.CreatedAt.After(newest.CreatedAt)) {
 			newest = room
 		}
 	}

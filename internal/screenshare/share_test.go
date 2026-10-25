@@ -125,3 +125,47 @@ func TestDropViewerLeavesTheOthers(t *testing.T) {
 		t.Fatalf("the owner got nothing")
 	}
 }
+
+// the tablet does not say when it stops, its keepalives stopping is the sign: a
+// share it has stopped renewing is not offered to anyone, though the room is still there
+func TestAShareThatIsNotRenewedIsOver(t *testing.T) {
+	rm := NewRoomManager()
+	room := rm.CreateRoom("zane", "tablet")
+	rm.Allow(room.RoomID, "anna")
+
+	if rm.FindActiveRoom("zane") != room.RoomID || !rm.CanWatch("zane", "anna") || len(rm.SharedWith("anna")) != 1 {
+		t.Fatalf("a new share is not offered")
+	}
+
+	// no keepalive for longer than the window
+	rm.mu.Lock()
+	room.lastActivity = time.Now().UTC().Add(-liveWindow - time.Second)
+	rm.mu.Unlock()
+
+	if got := rm.FindActiveRoom("zane"); got != "" {
+		t.Fatalf("the owner is offered a share that stopped: %s", got)
+	}
+	if rm.CanWatch("zane", "anna") {
+		t.Fatalf("anna may watch a share that stopped")
+	}
+	if got := rm.SharedWith("anna"); len(got) != 0 {
+		t.Fatalf("anna is told of a share that stopped: %v", got)
+	}
+
+	// a keepalive brings it back, it never was over
+	rm.Keepalive(room.RoomID)
+	if rm.FindActiveRoom("zane") != room.RoomID || !rm.CanWatch("zane", "anna") || len(rm.SharedWith("anna")) != 1 {
+		t.Fatalf("a renewed share is not offered")
+	}
+}
+
+func TestDeletedRoomIsNotOffered(t *testing.T) {
+	rm := NewRoomManager()
+	room := rm.CreateRoom("zane", "tablet")
+	rm.Allow(room.RoomID, "anna")
+
+	rm.DeleteRoom(room.RoomID)
+	if rm.FindActiveRoom("zane") != "" || rm.CanWatch("zane", "anna") || len(rm.SharedWith("anna")) != 0 {
+		t.Fatalf("a room that ended is offered")
+	}
+}

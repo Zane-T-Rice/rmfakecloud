@@ -42,6 +42,15 @@ type Message struct {
 
 const roomTimeout = 60 * time.Second
 
+// A share whose tablet has not renewed it (it does every 30 seconds) for this long
+// is over, though the room is kept a little longer. Nobody should be offered it.
+const liveWindow = 45 * time.Second
+
+// live tells if the tablet is still keeping the room going
+func (room *Room) live(now time.Time) bool {
+	return now.Sub(room.lastActivity) < liveWindow
+}
+
 func NewRoomManager() *RoomManager {
 	rm := &RoomManager{
 		rooms: make(map[string]*Room),
@@ -258,8 +267,9 @@ func (rm *RoomManager) FindActiveRoom(userID string) string {
 	defer rm.mu.RUnlock()
 
 	var newest *Room
+	now := time.Now().UTC()
 	for _, room := range rm.rooms {
-		if room.ownerUserID == userID {
+		if room.ownerUserID == userID && room.live(now) {
 			if newest == nil || room.CreatedAt.After(newest.CreatedAt) {
 				newest = room
 			}
