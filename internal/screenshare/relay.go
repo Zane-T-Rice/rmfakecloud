@@ -422,6 +422,10 @@ func (s *session) handle(data []byte) {
 	s.mu.Lock()
 	if complete[0] == msgHandshake {
 		s.markReady()
+		// the browser that asked for this may have given up by now
+		if len(s.subs) == 0 {
+			s.startIdleLocked()
+		}
 	}
 	if err := s.screen.apply(complete); err != nil && s.unusable < 5 {
 		s.unusable++
@@ -483,19 +487,27 @@ func (s *session) removeLocked(sub *Subscriber) {
 	}
 	delete(s.subs, sub)
 	close(sub.Messages)
-	if len(s.subs) == 0 && !s.isDone() {
-		if s.idle != nil {
-			s.idle.Stop()
-		}
-		s.idle = time.AfterFunc(idleTimeout, func() {
-			s.mu.Lock()
-			unused := len(s.subs) == 0
-			s.mu.Unlock()
-			if unused {
-				s.stop()
-			}
-		})
+	if len(s.subs) == 0 {
+		s.startIdleLocked()
 	}
+}
+
+// startIdleLocked lets the tablet go after a while if nobody is watching by then
+func (s *session) startIdleLocked() {
+	if s.isDone() {
+		return
+	}
+	if s.idle != nil {
+		s.idle.Stop()
+	}
+	s.idle = time.AfterFunc(idleTimeout, func() {
+		s.mu.Lock()
+		unused := len(s.subs) == 0
+		s.mu.Unlock()
+		if unused {
+			s.stop()
+		}
+	})
 }
 
 // assembler puts the frames the tablet splits over several messages back together,

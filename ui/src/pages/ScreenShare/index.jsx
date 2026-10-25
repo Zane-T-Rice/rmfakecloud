@@ -127,6 +127,9 @@ function parseMessage(data) {
 // idle again until Connect is pressed
 const WAIT_TIMEOUT_MS = 10 * 1000;
 
+// How long a connection may take once there is a share to join
+const CONNECT_TIMEOUT_MS = 30 * 1000;
+
 const STATUS = {
   // opened, not asked to connect yet
   IDLE: "idle",
@@ -207,6 +210,9 @@ export default function ScreenShare() {
   const [sharedWithMe, setSharedWithMe] = useState([]);
   // whose screen share we are watching, empty for our own
   const watchingRef = useRef("");
+  // the number of the attempt to join, an attempt that was given up on sees it
+  // changed and stops
+  const attemptRef = useRef(0);
   const [poppedOut, setPoppedOut] = useState(false);
   const [manualRotation, setManualRotation] = useState(0);
   const [backdrop, setBackdrop] = useState(getBackdrop);
@@ -415,7 +421,8 @@ export default function ScreenShare() {
 
         dc.onclose = () => {
           if (!disconnectedRef.current) {
-            setStatus(STATUS.WAITING);
+            setErrorMsg("The screen share has ended.");
+            setStatus(STATUS.ERROR);
           }
         };
       };
@@ -431,7 +438,8 @@ export default function ScreenShare() {
         ) {
           cleanup();
           if (!disconnectedRef.current) {
-            setStatus(STATUS.WAITING);
+            setErrorMsg("The connection to the tablet was lost.");
+            setStatus(STATUS.ERROR);
           }
         }
       };
@@ -491,7 +499,8 @@ export default function ScreenShare() {
               setStatus(STATUS.ERROR);
             }
           } else if (!disconnectedRef.current) {
-            setStatus(STATUS.WAITING);
+            setErrorMsg("The screen share has ended or the connection was lost.");
+            setStatus(STATUS.ERROR);
           }
         };
       }),
@@ -504,8 +513,10 @@ export default function ScreenShare() {
       cleanup();
       disconnectedRef.current = false;
       watchingRef.current = ownerId;
+      const attempt = ++attemptRef.current;
       setStatus(STATUS.CONNECTING);
       const result = await connectRelay(ownerId);
+      if (attempt !== attemptRef.current) return;
       if (!result.streaming) {
         watchingRef.current = "";
         setErrorMsg(`Can't watch ${ownerId}'s screen share: ${result.error}`);
@@ -542,15 +553,20 @@ export default function ScreenShare() {
   };
 
   const joinRoom = useCallback(async () => {
+    const attempt = ++attemptRef.current;
     try {
       setStatus(STATUS.CONNECTING);
 
-      if ((await connectRelay()).streaming) return;
+      const relay = await connectRelay();
+      if (attempt !== attemptRef.current) return;
+      if (relay.streaming) return;
 
       const offerRes = await api("offer");
-      if (!offerRes.ok) throw new Error("Failed to get offer from device");
+      if (attempt !== attemptRef.current) return;
+      if (!offerRes.ok) throw new Error("the tablet sent no offer");
 
       const data = await offerRes.json();
+      if (attempt !== attemptRef.current) return;
       roomIdRef.current = data.roomId;
 
       const pc = setupPeerConnection(data.iceServers);
@@ -585,6 +601,7 @@ export default function ScreenShare() {
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      if (attempt !== attemptRef.current) return;
 
       // Wait for ICE gathering to complete so relay candidates are in the SDP
       if (pc.iceGatheringState !== "complete") {
@@ -612,10 +629,24 @@ export default function ScreenShare() {
         }),
       });
     } catch (e) {
-      setErrorMsg(e.message);
+      if (attempt !== attemptRef.current) return;
+      setErrorMsg(`Couldn't connect to the tablet's screen share (${e.message}).`);
       setStatus(STATUS.ERROR);
     }
   }, [setupPeerConnection, connectRelay]);
+
+  // A connection that doesn't come about is given up on, not waited for forever
+  useEffect(() => {
+    if (status !== STATUS.CONNECTING) return;
+    const giveUp = setTimeout(() => {
+      attemptRef.current++;
+      cleanup();
+      watchingRef.current = "";
+      setErrorMsg("Couldn't connect to the tablet's screen share, it took too long.");
+      setStatus(STATUS.ERROR);
+    }, CONNECT_TIMEOUT_MS);
+    return () => clearTimeout(giveUp);
+  }, [status, cleanup]);
 
   useEffect(() => {
     if (status !== STATUS.WAITING) return;

@@ -301,3 +301,36 @@ func TestUnusableFramesSayWhy(t *testing.T) {
 		t.Fatalf("a frame that is not zlib was taken")
 	}
 }
+
+// a session nobody joined (the browser gave up while it connected) is let go too
+func TestSessionWithoutViewersIsLetGo(t *testing.T) {
+	s := newTestSession()
+	s.handle(handshake(8, 6))
+
+	s.mu.Lock()
+	armed := s.idle != nil
+	s.mu.Unlock()
+	if !armed {
+		t.Fatalf("no timer to let the tablet go")
+	}
+
+	// and a viewer that comes before it fires keeps it
+	sub, err := s.addSubscriber("user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	cleared := s.idle == nil
+	s.mu.Unlock()
+	if !cleared {
+		t.Fatalf("the timer is still armed with a viewer")
+	}
+	sub.Close()
+	s.mu.Lock()
+	rearmed := s.idle != nil
+	s.mu.Unlock()
+	if !rearmed {
+		t.Fatalf("no timer after the last viewer left")
+	}
+	s.finish()
+}
