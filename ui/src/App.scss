@@ -123,6 +123,43 @@ code {
   .documents-tree {
     max-height: 25vh !important;
   }
+
+  // phones: let the page scroll, the tree and the viewer stack below each other
+  html, body, #root {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+  }
+
+  body .container-fluid {
+    margin: 0 10px !important;
+    width: calc(100vw - 20px) !important;
+  }
+
+  .documents-page {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .documents-row {
+    flex: none !important;
+  }
+
+  .documents-tree-col,
+  .documents-viewer-col {
+    height: auto !important;
+  }
+
+  .documents-tree-container {
+    flex: none !important;
+    height: 35vh !important;
+  }
+
+  .documents-viewer {
+    flex: none !important;
+    height: 85vh !important;
+    margin-top: 1em;
+  }
 }
 
 .container-fluid {

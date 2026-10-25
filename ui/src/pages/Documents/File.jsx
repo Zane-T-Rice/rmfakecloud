@@ -142,6 +142,14 @@ export default function FileViewer({ file, onSelect }) {
               />
               of {pages}
             </span>
+            <Form.Range
+              min={1}
+              max={pages}
+              value={page}
+              onChange={(e) => setPage(parseInt(e.target.value, 10))}
+              aria-label="Page"
+              style={{ width: '10em', verticalAlign: 'middle' }}
+            />
           </div>
         )}
         <div style={{ flex: 1 }}></div>
