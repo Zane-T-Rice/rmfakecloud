@@ -52,6 +52,28 @@ See the [documentation](https://ddvk.github.io/rmfakecloud/remarkable/setup/) fo
   or modify the profile and add `sync15:true`
   a full resync will be needed (the tablet will do it), the old files are kept as they were and everything is put in a new directory
 
+## Notebook templates in the web preview and PDF export
+
+Notebook pages (not PDFs/epubs) are drawn on top of a background template: grid, lines, week planner and so on. These templates are reMarkable's own artwork, so they are **not included** in rmfakecloud. To get them in the web preview and the exported PDFs, **you have to copy the templates from your own tablet**:
+
+1. Enable SSH access on the tablet (developer mode).
+2. Copy the template files to the `templates` folder inside rmfakecloud's data directory (`/data/templates` in the Docker image):
+
+   ```
+   scp 'root@<tablet-ip>:/usr/share/remarkable/templates/*.template' <data dir>/templates/
+   ```
+
+   The files must keep their names, e.g. `P Week 2.template`.
+
+No settings or restart are needed. A page whose template file is missing, or that uses the "Blank" template, is exported blank. Please don't commit the template files to a public repository.
+
+**Tested on:** only a reMarkable Paper Pro running software **3.29.0.152**. Known limits:
+
+- Only the JSON `.template` format of the Paper Pro is supported. Older firmware ships templates in other formats.
+- Pages in the v6 `.rm` format are assumed to come from a Paper Pro (1620x2160 screen). A reMarkable 2 on 3.x also writes v6 and has not been tried, its ink may be offset.
+- Only a few templates were checked by eye, the rest render without errors but haven't been compared with the tablet. The dot grids may be shifted slightly.
+- Templates you added to the device yourself are not looked up.
+
 ## Development
 
 run `./dev.sh` which should start the UI and backend
