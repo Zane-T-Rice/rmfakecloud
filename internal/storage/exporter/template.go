@@ -97,15 +97,18 @@ type templateRenderer struct {
 
 // Render draws t on the current page of c and returns the content stream
 // operations for the lines. The text is drawn by the creator itself.
-// width and height are the template size in pixels, scale the points per pixel.
-func (t *template) Render(c *creator.Creator, width, height, scale float64) (string, error) {
+// width and height are the template size in pixels (the screen of the device,
+// what templateWidth and templateHeight are on it), pageHeight the height of
+// the page, which can be much taller than the screen: repeating groups fill it
+// but the expressions keep seeing the screen size. scale is points per pixel.
+func (t *template) Render(c *creator.Creator, width, height, pageHeight, scale float64) (string, error) {
 	r := &templateRenderer{
 		c:      c,
 		cc:     contentstream.NewContentCreator(),
 		scale:  scale,
-		pageH:  height * scale,
+		pageH:  pageHeight * scale,
 		width:  width,
-		height: height,
+		height: pageHeight,
 	}
 
 	// paperOriginX is where the paper starts, the whole canvas for us

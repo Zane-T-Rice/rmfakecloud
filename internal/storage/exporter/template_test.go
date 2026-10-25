@@ -71,7 +71,7 @@ func TestRenderRepeatedGrid(t *testing.T) {
 	c := creator.New()
 	c.NewPage()
 	// 1000x500 canvas, a tile is the full width and 100 high: 5 rows
-	ops, err := tpl.Render(c, 1000, 500, 0.5)
+	ops, err := tpl.Render(c, 1000, 500, 500, 0.5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestRenderNestedGroupsAndCounts(t *testing.T) {
 
 	c := creator.New()
 	c.NewPage()
-	ops, err := tpl.Render(c, 1000, 1000, 1)
+	ops, err := tpl.Render(c, 1000, 1000, 1000, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,11 +118,39 @@ func TestRenderSkipsBrokenItems(t *testing.T) {
 	}`)
 	c := creator.New()
 	c.NewPage()
-	ops, err := tpl.Render(c, 100, 100, 1)
+	ops, err := tpl.Render(c, 100, 100, 100, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := strokes(ops); got != 1 {
 		t.Fatalf("got %d strokes, want 1", got)
+	}
+}
+
+// the margin of the college template is computed from templateHeight, it must
+// stay where the screen puts it however tall the page is
+func TestRenderTallPageKeepsScreenSizeInExpressions(t *testing.T) {
+	tpl := parseTemplate(t, `{
+		"constants": [{"offsetX": "templateWidth / 2 - templateHeight / 2 + 464"}],
+		"items": [{
+			"type": "group",
+			"boundingBox": {"x": 0, "y": 0, "width": "templateHeight", "height": 62},
+			"repeat": {"rows": "down"},
+			"children": [{"type": "path", "data": ["M", "offsetX", 0, "L", "offsetX", "parentHeight - 1"]}]
+		}]
+	}`)
+	c := creator.New()
+	c.NewPage()
+	// a 1620x2160 screen on a 6000px tall page: the line is at 810-1080+464 = 194
+	ops, err := tpl.Render(c, 1620, 2160, 6000, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ops, "194 ") {
+		t.Fatalf("margin not at x=194:\n%s", ops)
+	}
+	// and it is drawn all the way down the page
+	if got := strokes(ops); got < 90 {
+		t.Fatalf("got %d strokes, want a line per 62px row", got)
 	}
 }

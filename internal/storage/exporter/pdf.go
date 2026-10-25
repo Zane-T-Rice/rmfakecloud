@@ -42,6 +42,8 @@ type PdfGenerator struct {
 	pdfReader *pdf.PdfReader
 	template  bool
 	templates map[string]*template
+	// the document has v6 (Paper Pro) pages
+	v6 bool
 }
 
 type PdfGeneratorOptions struct {
@@ -53,9 +55,18 @@ type PdfGeneratorOptions struct {
 	TemplatesDir string
 }
 
+// isV6 tells if a page is a Paper Pro page. Pages without ink have no version,
+// they follow the rest of the document (assumeV6).
+func isV6(data *rm.Rm, assumeV6 bool) bool {
+	if data == nil {
+		return assumeV6
+	}
+	return data.Version == rm.V6
+}
+
 // deviceSize returns the screen size the page was written on
-func deviceSize(data *rm.Rm) (float64, float64) {
-	if data != nil && data.Version == rm.V6 {
+func deviceSize(data *rm.Rm, assumeV6 bool) (float64, float64) {
+	if isV6(data, assumeV6) {
 		return PaperProWidth, PaperProHeight
 	}
 	return DeviceWidth, DeviceHeight
@@ -89,8 +100,8 @@ func maxContentY(data *rm.Rm) float64 {
 
 // templatePageHeight is the height in points needed to fit the whole content
 // of a template page (notebook pages can scroll far past one screen)
-func templatePageHeight(data *rm.Rm) float64 {
-	w, h := deviceSize(data)
+func templatePageHeight(data *rm.Rm, assumeV6 bool) float64 {
+	w, h := deviceSize(data, assumeV6)
 	scale := rmPageWidth / w
 	needed := scale * math.Max(h, maxContentY(data)+pageBottomMargin)
 	return math.Max(rmPageHeight, needed)
@@ -103,6 +114,11 @@ func normalized(p1 rm.Point, ratioX float64, xShift float64) (float64, float64) 
 func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGeneratorOptions) (err error) {
 
 	p.options = options
+	for _, pg := range zip.Pages {
+		if pg.Data != nil && pg.Data.Version == rm.V6 {
+			p.v6 = true
+		}
+	}
 
 	if len(zip.Pages) == 0 {
 		if zip.PayloadReader != nil {
@@ -133,12 +149,12 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 			continue
 		}
 
-		page, err := p.addBackgroundPage(c, i+1, templatePageHeight(pageAnnotations.Data))
+		page, err := p.addBackgroundPage(c, i+1, templatePageHeight(pageAnnotations.Data, p.v6))
 		if err != nil {
 			return err
 		}
 
-		deviceW, deviceH := deviceSize(pageAnnotations.Data)
+		deviceW, deviceH := deviceSize(pageAnnotations.Data, p.v6)
 		xShift := xCorrection(pageAnnotations.Data)
 
 		var scale float64
@@ -155,7 +171,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 		}
 
 		if p.template && !p.options.AnnotationsOnly {
-			p.drawTemplate(c, page, pageAnnotations.Pagedata, deviceW, scale)
+			p.drawTemplate(c, page, pageAnnotations.Pagedata, deviceW, deviceH, scale)
 		}
 
 		if err != nil {
@@ -307,7 +323,7 @@ func (p *PdfGenerator) addBackgroundPage(c *creator.Creator, pageNum int, templa
 
 // drawTemplate draws the background template of a notebook page, if the
 // template files are available. Pages are left blank otherwise.
-func (p *PdfGenerator) drawTemplate(c *creator.Creator, page *pdf.PdfPage, name string, deviceW, scale float64) {
+func (p *PdfGenerator) drawTemplate(c *creator.Creator, page *pdf.PdfPage, name string, deviceW, deviceH, scale float64) {
 	if p.options.TemplatesDir == "" || name == "" || name == "Blank" {
 		return
 	}
@@ -328,7 +344,7 @@ func (p *PdfGenerator) drawTemplate(c *creator.Creator, page *pdf.PdfPage, name 
 		return
 	}
 
-	ops, err := t.Render(c, deviceW, c.Height()/scale, scale)
+	ops, err := t.Render(c, deviceW, deviceH, c.Height()/scale, scale)
 	if err != nil {
 		logrus.Warnf("cannot render template %q: %v", name, err)
 		return
