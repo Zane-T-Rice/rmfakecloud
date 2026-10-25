@@ -25,11 +25,13 @@ const (
 	// Paper Pro screen, used by v6 files
 	PaperProWidth  = 1620
 	PaperProHeight = 2160
-	// the Paper Pro shows a pdf at its real size, this many pixels per inch
-	PaperProDPI = 229.0
+	// the pixels per inch the ink of a pdf is drawn with. The screen is 229 dpi, but
+	// the end of long notes only lines up with 226 (the tablet shows the pdf about
+	// 1.3% larger than its real size)
+	PaperProDPI = 226.0
 	// small corrections to the ink on a pdf, in pixels
-	v6PdfOffsetX = 0.0
-	v6PdfOffsetY = 12.0
+	v6PdfOffsetX = 2.0
+	v6PdfOffsetY = 5.0
 
 	// template-only pages are this wide in points, the height follows the content
 	rmPageWidth  = 445.0

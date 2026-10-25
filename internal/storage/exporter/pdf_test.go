@@ -66,9 +66,9 @@ func TestV6PdfTransform(t *testing.T) {
 	if want := v6PdfOffsetY * scale; y < want-0.01 || y > want+0.01 {
 		t.Fatalf("top of the page at %v, want %v", y, want)
 	}
-	// 229 pixels are an inch
+	// a dpi worth of pixels is an inch
 	_, y0 := normalized(rm.Point{}, scale, xShift, yShift)
-	if _, y1 := normalized(rm.Point{Y: 229}, scale, xShift, yShift); y1-y0 < 71.99 || y1-y0 > 72.01 {
+	if _, y1 := normalized(rm.Point{Y: float32(PaperProDPI)}, scale, xShift, yShift); y1-y0 < 71.99 || y1-y0 > 72.01 {
 		t.Fatalf("229px = %vpt, want 72", y1-y0)
 	}
 }
