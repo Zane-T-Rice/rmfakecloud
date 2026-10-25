@@ -147,18 +147,18 @@ export default function FileViewer({ file, onSelect }) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <Navbar style={{ marginLeft: '-12px' }}>
-        { file && (<div><NameTag node={file} onSelect={onSelect} /></div>) }
+        { file && <NameTag node={file} onSelect={onSelect} /> }
       </Navbar>
 
-      <Navbar>
+      <Navbar className="viewer-toolbar flex-nowrap">
         {pages > 1 && (
-          <div>
+          <div className="d-flex align-items-center flex-nowrap">
             <ButtonGroup aria-label="Basic example">
               <Button size="sm" variant="outline-secondary" onClick={onPrev}><FaChevronLeft /></Button>
               <Button size="sm" variant="outline-secondary" onClick={onNext}><FaChevronRight /></Button>
             </ButtonGroup>
-            <span style={{ margin: '0 10px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              Page:
+            <span style={{ margin: '0 10px', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+              <span className="d-none d-sm-inline">Page:</span>
               <Form.Control
                 size="sm"
                 type="number"

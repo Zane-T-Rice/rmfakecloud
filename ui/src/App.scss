@@ -75,6 +75,8 @@
 html, body {
     height: 100%;
     overflow: hidden;
+    // pulling down reloads the page, see PullToRefresh
+    overscroll-behavior-y: none;
     background-color: $background2;
 }
 
@@ -314,4 +316,74 @@ main h2 {
 
 .flex-spacer {
   flex: 1;
+}
+
+
+// the path of a document or folder, on one line
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  > * {
+    flex: 0 0 auto;
+  }
+}
+
+// the page controls of the viewer
+.viewer-toolbar {
+  gap: 6px;
+}
+
+@media (max-width: 767.98px) {
+  // the top menu opens over the page
+  nav.navbar .navbar-collapse {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    padding: 0.5rem 1rem;
+    background-color: $background1;
+    z-index: 1050;
+  }
+
+  nav.navbar .navbar-toggler {
+    border-color: $foreground2;
+  }
+
+  nav.navbar .navbar-toggler-icon {
+    filter: invert(0.8);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .viewer-toolbar {
+    gap: 4px;
+    padding-left: 0;
+    padding-right: 0;
+
+    .btn {
+      padding-left: 0.4rem;
+      padding-right: 0.4rem;
+    }
+
+    .form-control {
+      width: 3.6em !important;
+      padding-left: 0.3rem;
+      padding-right: 0.3rem;
+    }
+
+    span {
+      margin: 0 4px !important;
+    }
+  }
 }

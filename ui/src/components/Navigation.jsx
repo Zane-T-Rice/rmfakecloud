@@ -15,7 +15,7 @@ const NavigationBar = () => {
     return user && user.Roles && user.Roles[0] === "Admin";
   }
   return (
-    <Navbar className="sticky-top">
+    <Navbar expand="md" collapseOnSelect className="sticky-top">
       <Container fluid>
         <Navbar.Brand>
           <Nav.Link as={NavLink} to="/">
@@ -29,29 +29,29 @@ const NavigationBar = () => {
               <Nav>
                 {" "}
                 <Nav.Item>
-                  <Nav.Link as={NavLink} to="/documents">
+                  <Nav.Link as={NavLink} eventKey="documents" to="/documents">
                     Documents
                   </Nav.Link>
                 </Nav.Item>
                 <Nav.Item>
-                  <Nav.Link as={NavLink} to="/integrations">
+                  <Nav.Link as={NavLink} eventKey="integrations" to="/integrations">
                     Integrations
                   </Nav.Link>
                 </Nav.Item>
                 <Nav.Item>
-                  <Nav.Link as={NavLink} to="/connect">
+                  <Nav.Link as={NavLink} eventKey="connect" to="/connect">
                     Connect
                   </Nav.Link>
                 </Nav.Item>
                 <Nav.Item>
-                  <Nav.Link as={NavLink} to="/screenshare">
+                  <Nav.Link as={NavLink} eventKey="screenshare" to="/screenshare">
                     Screen Share
                   </Nav.Link>
                 </Nav.Item>
 				{ isAdmin() &&
 
 					<Nav.Item>
-					  <Nav.Link as={NavLink} to="/admin">
+					  <Nav.Link as={NavLink} eventKey="admin" to="/admin">
 						Admin	
 					  </Nav.Link>
 					</Nav.Item>

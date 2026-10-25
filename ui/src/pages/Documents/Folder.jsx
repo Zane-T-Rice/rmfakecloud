@@ -65,7 +65,7 @@ export default function Folder({ selection, onSelect, onUpdate }) {
   return (
     <>
       <Navbar style={{ marginLeft: '-12px' }}>
-        { folder && (<div><NameTag node={folder} onSelect={onSelect} /></div>) }
+        { folder && <NameTag node={folder} onSelect={onSelect} /> }
       </Navbar>
 
       <Navbar className={styles.filedivider}>

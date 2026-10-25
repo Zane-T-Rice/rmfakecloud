@@ -17,6 +17,7 @@ import Integrations from "./pages/Integrations";
 import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import ScreenShare from "./pages/ScreenShare";
+import PullToRefresh from "./components/PullToRefresh";
 import NoMatch from "./pages/404";
 
 import "react-toastify/dist/ReactToastify.css";
@@ -39,6 +40,7 @@ export default function App() {
     <>
       <AuthProvider>
         <Router>
+          <PullToRefresh />
           <div style={{display: "flex", flexDirection: "column", height: "100%"}}>
             <Navigationbar />
             <PasscodeResets />
