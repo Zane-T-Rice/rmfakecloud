@@ -23,6 +23,23 @@ import { pdfjs, Document, Page } from "react-pdf";
 // tablet screen shows, whatever the window width. Never wider than the viewer
 // and not too small to read.
 const TABLET_ASPECT = 3 / 4;
+
+// the page each document was last at, kept in this browser
+const pageKey = (id) => `rmfakecloud.page.${id}`;
+const loadSavedPage = (id) => {
+  try {
+    return parseInt(window.localStorage.getItem(pageKey(id)), 10);
+  } catch (e) {
+    return NaN;
+  }
+};
+const savePage = (id, page) => {
+  try {
+    window.localStorage.setItem(pageKey(id), String(page));
+  } catch (e) {
+    // no storage, no memory
+  }
+};
 const MIN_PAGE_WIDTH = 400;
 
 export default function FileViewer({ file, onSelect }) {
@@ -33,10 +50,20 @@ export default function FileViewer({ file, onSelect }) {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [width, setWidth] = useState(100);
+  // the document whose page is known, nothing is saved before that
+  const loadedId = useRef(null);
   const onLoadSuccess = (pdf) => {
-    setPage(1);
+    // back to where it was, unless the document has changed since
+    const saved = loadSavedPage(file.id);
+    setPage(saved >= 1 && saved <= pdf.numPages ? saved : 1);
     setPages(pdf.numPages);
+    loadedId.current = file.id;
   };
+  useEffect(() => {
+    if (loadedId.current === file.id) {
+      savePage(file.id, page);
+    }
+  }, [page, file.id]);
   const onPrev = () => {
     setPage((p) => {
       return Math.max(p - 1, 1);
