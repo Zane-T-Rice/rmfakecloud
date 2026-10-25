@@ -188,9 +188,47 @@ function withoutMdnsCandidates(sdp) {
   return kept.join("\r\n");
 }
 
+// The candidates in a description, for the connection details
+function sdpCandidates(sdp) {
+  return sdp
+    .split(/\r?\n/)
+    .filter((l) => l.startsWith("a=candidate:"))
+    .map((l) => {
+      const f = l.split(" ");
+      return `${f[f.indexOf("typ") + 1]} ${f[4]}:${f[5]} ${f[2]}`;
+    });
+}
+
+// What the connection tried, the pairs of candidates and their state
+async function describePairs(pc) {
+  try {
+    const report = await pc.getStats();
+    const cands = {};
+    report.forEach((r) => {
+      if (r.type === "local-candidate" || r.type === "remote-candidate") cands[r.id] = r;
+    });
+    const out = [];
+    report.forEach((r) => {
+      if (r.type !== "candidate-pair") return;
+      const fmt = (c) => (c ? `${c.candidateType} ${c.address || c.ip}:${c.port}` : "?");
+      out.push(
+        `pair ${r.state}${r.nominated ? " nominated" : ""} ${fmt(cands[r.localCandidateId])} -> ${fmt(cands[r.remoteCandidateId])} (checks sent ${r.requestsSent || 0}, answered ${r.responsesReceived || 0})`
+      );
+    });
+    return out.length ? out : ["no candidate pairs"];
+  } catch (e) {
+    return ["stats: " + e.message];
+  }
+}
+
 export default function ScreenShare() {
   const [status, setStatus] = useState(STATUS.WAITING);
   const [errorMsg, setErrorMsg] = useState("");
+  // what the connection did, shown under "Connection details"
+  const [diag, setDiag] = useState([]);
+  const addDiag = useCallback((msg) => {
+    setDiag((d) => [...d.slice(-80), `${new Date().toLocaleTimeString()} ${msg}`]);
+  }, []);
   const [poppedOut, setPoppedOut] = useState(false);
   const [manualRotation, setManualRotation] = useState(0);
   const [backdrop, setBackdrop] = useState(getBackdrop);
@@ -391,16 +429,21 @@ export default function ScreenShare() {
 
       // Don't trickle ICE candidates. The tablet crashes on mDNS candidates.
       // The SDP answer already contains our ICE info for LAN connectivity.
-      pc.onicecandidate = () => {};
+      pc.onicecandidate = (e) => {
+        if (e.candidate) addDiag("local candidate: " + e.candidate.candidate);
+      };
+      pc.onicecandidateerror = (e) =>
+        addDiag(`ice error ${e.errorCode} ${e.url || ""} ${e.errorText || ""}`);
+      pc.onicegatheringstatechange = () => addDiag("gathering: " + pc.iceGatheringState);
+      pc.oniceconnectionstatechange = () => addDiag("ice: " + pc.iceConnectionState);
 
-      pc.oniceconnectionstatechange = () =>
-
-      pc.onconnectionstatechange = () => {
-
+      pc.onconnectionstatechange = async () => {
+        addDiag("connection: " + pc.connectionState);
         if (
           pc.connectionState === "failed" ||
           pc.connectionState === "disconnected"
         ) {
+          (await describePairs(pc)).forEach(addDiag);
           cleanup();
           if (!disconnectedRef.current) {
             setStatus(STATUS.WAITING);
@@ -410,7 +453,7 @@ export default function ScreenShare() {
 
       return pc;
     },
-    [cleanup]
+    [cleanup, addDiag]
   );
 
   const joinRoom = useCallback(async () => {
@@ -439,7 +482,9 @@ export default function ScreenShare() {
       if (offerPayload.type === "webtrc") offerPayload = offerPayload.payload;
 
       const sdp = offerPayload.description || offerPayload.sdp;
+      addDiag("browser: " + navigator.userAgent);
       await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
+      addDiag("offer from the tablet: " + (sdpCandidates(sdp).join(", ") || "no candidates"));
 
       for (const msg of msgs) {
         let inner = msg.payload;
@@ -470,21 +515,28 @@ export default function ScreenShare() {
         });
       }
 
+      const answerSdp = withoutMdnsCandidates(pc.localDescription.sdp);
+      addDiag(
+        `answer (gathering ${pc.iceGatheringState}): ` +
+          (sdpCandidates(answerSdp).join(", ") || "no candidates") +
+          ` [left out: ${sdpCandidates(pc.localDescription.sdp).length - sdpCandidates(answerSdp).length}]`
+      );
       await api(`room/${data.roomId}/answer`, {
         method: "POST",
         body: JSON.stringify({
           targetClientId: offerMsg.clientId,
           payload: {
             type: "webtrc",
-            payload: { type: "answer", description: withoutMdnsCandidates(pc.localDescription.sdp) },
+            payload: { type: "answer", description: answerSdp },
           },
         }),
       });
     } catch (e) {
+      addDiag("error: " + e.message);
       setErrorMsg(e.message);
       setStatus(STATUS.ERROR);
     }
-  }, [setupPeerConnection]);
+  }, [setupPeerConnection, addDiag]);
 
   useEffect(() => {
     if (status !== STATUS.WAITING) return;
@@ -536,6 +588,13 @@ export default function ScreenShare() {
             </Button>
           )}
         </Alert>
+      )}
+
+      {diag.length > 0 && (
+        <details className="mb-3" open={status !== STATUS.STREAMING}>
+          <summary>Connection details</summary>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{diag.join("\n")}</pre>
+        </details>
       )}
 
       {status === STATUS.WAITING && (
