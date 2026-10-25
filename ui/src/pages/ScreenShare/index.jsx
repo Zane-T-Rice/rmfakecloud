@@ -123,6 +123,10 @@ function parseMessage(data) {
   }
 }
 
+// How long to wait for the tablet to start sharing before giving up, and being
+// idle again until Connect is pressed
+const WAIT_TIMEOUT_MS = 2 * 60 * 1000;
+
 const STATUS = {
   // opened, not asked to connect yet
   IDLE: "idle",
@@ -192,6 +196,8 @@ function withoutMdnsCandidates(sdp) {
 
 export default function ScreenShare() {
   const [status, setStatus] = useState(STATUS.IDLE);
+  // why it is idle, when it gave up waiting
+  const [idleNote, setIdleNote] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   // who this screen share can be shared with: {active, users: [{id, allowed}]}
   const [shareInfo, setShareInfo] = useState({ active: false, users: [] });
@@ -622,7 +628,17 @@ export default function ScreenShare() {
       }
     }, 2000);
 
-    return () => clearInterval(check);
+    // no share to be found, stop trying until asked again
+    const giveUp = setTimeout(() => {
+      clearInterval(check);
+      setIdleNote("The tablet isn't sharing its screen. Start screen sharing on it and press Connect.");
+      setStatus(STATUS.IDLE);
+    }, WAIT_TIMEOUT_MS);
+
+    return () => {
+      clearInterval(check);
+      clearTimeout(giveUp);
+    };
   }, [status, joinRoom]);
 
   useEffect(() => { manualRotationRef.current = manualRotation; }, [manualRotation]);
@@ -651,6 +667,7 @@ export default function ScreenShare() {
 
   const reconnect = () => {
     disconnectedRef.current = false;
+    setIdleNote("");
     setStatus(STATUS.WAITING);
   };
 
@@ -670,7 +687,7 @@ export default function ScreenShare() {
 
       {status === STATUS.IDLE && (
         <Alert variant="info">
-          Not connected.
+          Not connected.{idleNote && <> {idleNote}</>}
           <Button variant="primary" size="sm" className="ms-3" onClick={reconnect}>
             Connect
           </Button>
