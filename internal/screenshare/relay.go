@@ -61,7 +61,8 @@ type Signaler interface {
 	SendDirect(uid, roomID, clientID, targetClientID string, payload json.RawMessage)
 }
 
-// Relay keeps one connection to the tablet per user
+// Relay keeps one connection to the tablet per owner of a screen share, however
+// many viewers it has
 type Relay struct {
 	rooms *RoomManager
 	sig   Signaler
@@ -117,17 +118,19 @@ func toICEServers(servers []interface{}) []webrtc.ICEServer {
 	return out
 }
 
-// Subscribe joins the screen share of the user, connecting to the tablet first if
-// needed. Wait on Messages: the first ones are the current state of the screen.
-func (r *Relay) Subscribe(uid string) (*Subscriber, error) {
+// Subscribe joins the screen share of the owner for the viewer (the owner or
+// someone allowed by them, checking that is up to the caller), connecting to the
+// tablet first if needed. Wait on Messages: the first ones are the current state
+// of the screen.
+func (r *Relay) Subscribe(ownerID, viewerID string) (*Subscriber, error) {
 	r.mu.Lock()
-	s := r.sessions[uid]
+	s := r.sessions[ownerID]
 	if s != nil && s.isDone() {
 		s = nil
 	}
 	if s == nil {
-		s = newSession(r, uid)
-		r.sessions[uid] = s
+		s = newSession(r, ownerID)
+		r.sessions[ownerID] = s
 		go s.run()
 	}
 	r.mu.Unlock()
@@ -140,7 +143,18 @@ func (r *Relay) Subscribe(uid string) (*Subscriber, error) {
 	if err := s.failure(); err != nil {
 		return nil, err
 	}
-	return s.addSubscriber()
+	return s.addSubscriber(viewerID)
+}
+
+// DropViewer ends what the viewer watches of the owner's screen share, the others
+// go on
+func (r *Relay) DropViewer(ownerID, viewerID string) {
+	r.mu.Lock()
+	s := r.sessions[ownerID]
+	r.mu.Unlock()
+	if s != nil {
+		s.dropViewer(viewerID)
+	}
 }
 
 func (r *Relay) forget(s *session) {
@@ -156,6 +170,7 @@ type Subscriber struct {
 	// Messages is closed when the screen share has ended
 	Messages chan []byte
 	s        *session
+	viewer   string
 }
 
 // Close leaves the screen share
@@ -425,13 +440,13 @@ func (s *session) handle(data []byte) {
 	s.mu.Unlock()
 }
 
-func (s *session) addSubscriber() (*Subscriber, error) {
+func (s *session) addSubscriber(viewer string) (*Subscriber, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.isDone() {
 		return nil, errors.New("the screen share has ended")
 	}
-	sub := &Subscriber{Messages: make(chan []byte, subscriberBuffer), s: s}
+	sub := &Subscriber{Messages: make(chan []byte, subscriberBuffer), s: s, viewer: viewer}
 	for _, m := range s.screen.snapshot() {
 		sub.Messages <- m
 	}
@@ -446,12 +461,32 @@ func (s *session) addSubscriber() (*Subscriber, error) {
 func (s *session) removeSubscriber(sub *Subscriber) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.removeLocked(sub)
+}
+
+// dropViewer closes everything the viewer watches
+func (s *session) dropViewer(viewer string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for sub := range s.subs {
+		if sub.viewer == viewer {
+			s.removeLocked(sub)
+		}
+	}
+}
+
+// removeLocked takes a subscriber out, the tablet is let go after a while when it
+// was the last
+func (s *session) removeLocked(sub *Subscriber) {
 	if _, ok := s.subs[sub]; !ok {
 		return
 	}
 	delete(s.subs, sub)
 	close(sub.Messages)
 	if len(s.subs) == 0 && !s.isDone() {
+		if s.idle != nil {
+			s.idle.Stop()
+		}
 		s.idle = time.AfterFunc(idleTimeout, func() {
 			s.mu.Lock()
 			unused := len(s.subs) == 0

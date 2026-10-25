@@ -20,8 +20,11 @@ type Room struct {
 	lastActivity time.Time
 	participants map[string]*RoomClient
 	ownerUserID  string
-	messages     []Message
-	notify       chan struct{}
+	// users, besides the owner, who may watch this screen share. It goes with the
+	// room, so it is over when the share is.
+	allowed  map[string]struct{}
+	messages []Message
+	notify   chan struct{}
 }
 
 type RoomClient struct {
@@ -83,6 +86,7 @@ func (rm *RoomManager) CreateRoom(userID, deviceID string) *Room {
 		lastActivity: now,
 		participants: make(map[string]*RoomClient),
 		ownerUserID:  userID,
+		allowed:      make(map[string]struct{}),
 		notify:       make(chan struct{}, 1),
 	}
 	room.participants[deviceID] = &RoomClient{

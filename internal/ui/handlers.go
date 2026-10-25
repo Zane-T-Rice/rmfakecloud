@@ -963,6 +963,11 @@ var streamUpgrader = websocket.Upgrader{WriteBufferSize: 64 << 10}
 // {"error": ...} says why there is nothing to see.
 func (app *ReactAppWrapper) screenshareStream(c *gin.Context) {
 	uid := userID(c)
+	// whose screen share to watch, the own one unless someone has allowed it
+	ownerID := c.Query("owner")
+	if ownerID == "" {
+		ownerID = uid
+	}
 
 	conn, err := streamUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -982,7 +987,12 @@ func (app *ReactAppWrapper) screenshareStream(c *gin.Context) {
 		}
 	}()
 
-	sub, err := app.relay.Subscribe(uid)
+	if !app.roomManager.CanWatch(ownerID, uid) {
+		// the same for a share that does not exist and one that is not for you
+		conn.WriteJSON(gin.H{"error": "nothing is shared with you"})
+		return
+	}
+	sub, err := app.relay.Subscribe(ownerID, uid)
 	if err != nil {
 		conn.WriteJSON(gin.H{"error": err.Error()})
 		return
@@ -1004,6 +1014,79 @@ func (app *ReactAppWrapper) screenshareStream(c *gin.Context) {
 			return
 		}
 	}
+}
+
+// screenshareShareGet tells who the current screen share of the user can be shared
+// with, and who it is shared with
+func (app *ReactAppWrapper) screenshareShareGet(c *gin.Context) {
+	uid := userID(c)
+
+	roomID := app.roomManager.FindActiveRoom(uid)
+	if roomID == "" {
+		c.JSON(http.StatusOK, gin.H{"active": false, "users": []gin.H{}})
+		return
+	}
+
+	users, err := app.userStorer.GetUsers()
+	if err != nil {
+		log.Error(err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	allowed := make(map[string]bool)
+	for _, u := range app.roomManager.AllowedUsers(roomID) {
+		allowed[u] = true
+	}
+	list := []gin.H{}
+	for _, u := range users {
+		if u.ID == uid {
+			continue
+		}
+		list = append(list, gin.H{"id": u.ID, "allowed": allowed[u.ID]})
+	}
+	c.JSON(http.StatusOK, gin.H{"active": true, "users": list})
+}
+
+// screenshareShareAllow lets a user watch the current screen share
+func (app *ReactAppWrapper) screenshareShareAllow(c *gin.Context) {
+	uid := userID(c)
+	target := c.Param("userId")
+
+	roomID := app.roomManager.FindActiveRoom(uid)
+	if roomID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no active room"})
+		return
+	}
+	if target == uid {
+		badReq(c, "that is you")
+		return
+	}
+	if _, err := app.userStorer.GetUser(target); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no such user"})
+		return
+	}
+	app.roomManager.Allow(roomID, target)
+	c.Status(http.StatusNoContent)
+}
+
+// screenshareShareRevoke stops a user from watching, now
+func (app *ReactAppWrapper) screenshareShareRevoke(c *gin.Context) {
+	uid := userID(c)
+	target := c.Param("userId")
+
+	roomID := app.roomManager.FindActiveRoom(uid)
+	if roomID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no active room"})
+		return
+	}
+	app.roomManager.Disallow(roomID, target)
+	app.relay.DropViewer(uid, target)
+	c.Status(http.StatusNoContent)
+}
+
+// screenshareShared lists the screen shares others have allowed the user to watch
+func (app *ReactAppWrapper) screenshareShared(c *gin.Context) {
+	c.JSON(http.StatusOK, app.roomManager.SharedWith(userID(c)))
 }
 
 func (app *ReactAppWrapper) screenshareDeleteRoom(c *gin.Context) {

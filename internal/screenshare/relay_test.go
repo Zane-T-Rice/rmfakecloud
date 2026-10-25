@@ -171,7 +171,7 @@ func TestSubscribersGetTheStateAndWhatFollows(t *testing.T) {
 	s.handle(frame(rect{0, 0, 8, 6, solid(8, 6, 1)}))
 
 	// the first viewer
-	a, err := s.addSubscriber()
+	a, err := s.addSubscriber("user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestSubscribersGetTheStateAndWhatFollows(t *testing.T) {
 	s.handle(update)
 
 	// one that comes later still sees the update
-	b, err := s.addSubscriber()
+	b, err := s.addSubscriber("user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,8 +204,8 @@ func TestSubscribersGetTheStateAndWhatFollows(t *testing.T) {
 func TestSlowSubscriberIsDropped(t *testing.T) {
 	s := newTestSession()
 	s.handle(handshake(8, 6))
-	slow, _ := s.addSubscriber()
-	fast, _ := s.addSubscriber()
+	slow, _ := s.addSubscriber("user")
+	fast, _ := s.addSubscriber("user")
 
 	for i := 0; i < subscriberBuffer+10; i++ {
 		s.handle([]byte{msgCursor, 0, 1, 0, 2})
@@ -236,7 +236,7 @@ func TestSlowSubscriberIsDropped(t *testing.T) {
 func TestFinishClosesTheViewers(t *testing.T) {
 	s := newTestSession()
 	s.handle(handshake(8, 6))
-	sub, _ := s.addSubscriber()
+	sub, _ := s.addSubscriber("user")
 	for len(sub.Messages) > 0 {
 		<-sub.Messages
 	}
@@ -245,7 +245,7 @@ func TestFinishClosesTheViewers(t *testing.T) {
 	if _, ok := <-sub.Messages; ok {
 		t.Fatalf("viewer not closed")
 	}
-	if _, err := s.addSubscriber(); err == nil {
+	if _, err := s.addSubscriber("user"); err == nil {
 		t.Fatalf("joined a session that is over")
 	}
 	if !s.isDone() {

@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Container, Alert, Spinner, Button } from "react-bootstrap";
+import { Container, Alert, Spinner, Button, Form } from "react-bootstrap";
 import { BsGearFill, BsFullscreenExit, BsArrowCounterclockwise, BsArrowClockwise } from "react-icons/bs";
 import pako from "pako";
 import constants from "../../common/constants";
@@ -191,6 +191,12 @@ function withoutMdnsCandidates(sdp) {
 export default function ScreenShare() {
   const [status, setStatus] = useState(STATUS.WAITING);
   const [errorMsg, setErrorMsg] = useState("");
+  // who this screen share can be shared with: {active, users: [{id, allowed}]}
+  const [shareInfo, setShareInfo] = useState({ active: false, users: [] });
+  // screen shares others have allowed us to watch: [{ownerId, roomId}]
+  const [sharedWithMe, setSharedWithMe] = useState([]);
+  // whose screen share we are watching, empty for our own
+  const watchingRef = useRef("");
   const [poppedOut, setPoppedOut] = useState(false);
   const [manualRotation, setManualRotation] = useState(0);
   const [backdrop, setBackdrop] = useState(getBackdrop);
@@ -431,11 +437,12 @@ export default function ScreenShare() {
   // once the picture is coming, false when the server can't (then the browser
   // connects to the tablet by itself).
   const connectRelay = useCallback(
-    () =>
+    (owner = "") =>
       new Promise((resolve) => {
         const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+        const ownerParam = owner ? `?owner=${encodeURIComponent(owner)}` : "";
         const ws = new WebSocket(
-          `${scheme}://${window.location.host}${constants.ROOT_URL}/screenshare/stream`
+          `${scheme}://${window.location.host}${constants.ROOT_URL}/screenshare/stream${ownerParam}`
         );
         ws.binaryType = "arraybuffer";
         wsRef.current = ws;
@@ -450,22 +457,29 @@ export default function ScreenShare() {
             } catch (err) {
               // not for us
             }
-            if (msg.error && !streaming) resolve(false);
+            if (msg.error && !streaming) resolve({ streaming: false, error: msg.error });
             return;
           }
           if (!streaming) {
             streaming = true;
-            resolve(true);
+            resolve({ streaming: true });
           }
           handle(e.data);
         };
         ws.onerror = () => {
-          if (!streaming) resolve(false);
+          if (!streaming) resolve({ streaming: false, error: "can't connect to the server" });
         };
         ws.onclose = () => {
           if (wsRef.current === ws) wsRef.current = null;
           if (!streaming) {
-            resolve(false);
+            resolve({ streaming: false, error: "the connection to the server closed" });
+          } else if (owner) {
+            // not ours to wait for again
+            watchingRef.current = "";
+            if (!disconnectedRef.current) {
+              setErrorMsg("The screen share has ended.");
+              setStatus(STATUS.ERROR);
+            }
           } else if (!disconnectedRef.current) {
             setStatus(STATUS.WAITING);
           }
@@ -474,11 +488,54 @@ export default function ScreenShare() {
     [createMessageHandler]
   );
 
+  // Watch the screen share somebody has allowed us to watch
+  const watchShared = useCallback(
+    async (ownerId) => {
+      cleanup();
+      disconnectedRef.current = false;
+      watchingRef.current = ownerId;
+      setStatus(STATUS.CONNECTING);
+      const result = await connectRelay(ownerId);
+      if (!result.streaming) {
+        watchingRef.current = "";
+        setErrorMsg(`Can't watch ${ownerId}'s screen share: ${result.error}`);
+        setStatus(STATUS.ERROR);
+      }
+    },
+    [cleanup, connectRelay]
+  );
+
+  const refreshSharing = useCallback(async () => {
+    try {
+      const [share, shared] = await Promise.all([api("share"), api("shared")]);
+      if (share.ok) setShareInfo(await share.json());
+      if (shared.ok) setSharedWithMe(await shared.json());
+    } catch (e) {
+      // the next time
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshSharing();
+    const t = setInterval(refreshSharing, 5000);
+    return () => clearInterval(t);
+  }, [refreshSharing]);
+
+  const setAllowed = async (userId, allowed) => {
+    // show it at once, the server confirms with the next refresh
+    setShareInfo((info) => ({
+      ...info,
+      users: info.users.map((u) => (u.id === userId ? { ...u, allowed } : u)),
+    }));
+    await api(`share/${encodeURIComponent(userId)}`, { method: allowed ? "PUT" : "DELETE" }).catch(() => null);
+    refreshSharing();
+  };
+
   const joinRoom = useCallback(async () => {
     try {
       setStatus(STATUS.CONNECTING);
 
-      if (await connectRelay()) return;
+      if ((await connectRelay()).streaming) return;
 
       const offerRes = await api("offer");
       if (!offerRes.ok) throw new Error("Failed to get offer from device");
@@ -580,7 +637,12 @@ export default function ScreenShare() {
     setShowControls(false);
     disconnectedRef.current = true;
     setStatus(STATUS.ERROR);
-    setErrorMsg("Disconnected. Start a new screenshare session from the tablet to reconnect.");
+    setErrorMsg(
+      watchingRef.current
+        ? "Stopped watching."
+        : "Disconnected. Start a new screenshare session from the tablet to reconnect."
+    );
+    watchingRef.current = "";
   };
 
   const reconnect = () => {
@@ -613,6 +675,37 @@ export default function ScreenShare() {
         <Alert variant="info">
           <Spinner animation="border" size="sm" className="me-2" />
           Connecting to reMarkable...
+        </Alert>
+      )}
+
+      {status !== STATUS.STREAMING && status !== STATUS.CONNECTING && sharedWithMe.length > 0 && (
+        <Alert variant="success">
+          {sharedWithMe.map((share) => (
+            <div key={share.roomId} className="d-flex flex-wrap align-items-center gap-2">
+              <span>{share.ownerId} is sharing their screen with you.</span>
+              <Button size="sm" variant="success" onClick={() => watchShared(share.ownerId)}>
+                Watch
+              </Button>
+            </div>
+          ))}
+        </Alert>
+      )}
+
+      {!watchingRef.current && shareInfo.active && shareInfo.users.length > 0 && (
+        <Alert variant="secondary">
+          <div className="mb-1">Let others watch this screen share (it ends with the share):</div>
+          <div className="d-flex flex-wrap gap-3">
+            {shareInfo.users.map((u) => (
+              <Form.Check
+                key={u.id}
+                type="switch"
+                id={`share-with-${u.id}`}
+                label={u.id}
+                checked={u.allowed}
+                onChange={(e) => setAllowed(u.id, e.target.checked)}
+              />
+            ))}
+          </div>
         </Alert>
       )}
 
