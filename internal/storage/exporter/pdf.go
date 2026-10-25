@@ -33,7 +33,7 @@ const (
 	v6PdfOffsetX = -7.0
 	// the ink is stretched across the page by this, around the middle
 	v6PdfStretchX = 1.013
-	v6PdfOffsetY  = 9.0
+	v6PdfOffsetY  = 11.0
 
 	// template-only pages are this wide in points, the height follows the content
 	rmPageWidth  = 445.0
