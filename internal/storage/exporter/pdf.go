@@ -30,9 +30,9 @@ const (
 	// 0.4% larger than its real size)
 	PaperProDPI = 228.0
 	// small corrections to the ink on a pdf, in pixels
-	v6PdfOffsetX = -10.0
+	v6PdfOffsetX = -7.0
 	// the ink is stretched across the page by this, around the middle
-	v6PdfStretchX = 1.0175
+	v6PdfStretchX = 1.013
 	v6PdfOffsetY  = 4.0
 
 	// template-only pages are this wide in points, the height follows the content
