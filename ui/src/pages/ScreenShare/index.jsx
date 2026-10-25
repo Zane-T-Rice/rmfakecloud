@@ -432,6 +432,14 @@ export default function ScreenShare() {
       pc.onicecandidate = (e) => {
         if (e.candidate) addDiag("local candidate: " + e.candidate.candidate);
       };
+      // what the connection is doing meanwhile, not only when it has failed
+      [2000, 6000, 10000].forEach((ms) =>
+        setTimeout(async () => {
+          if (pc.connectionState === "closed" || pc.connectionState === "connected") return;
+          addDiag(`after ${ms / 1000}s (ice ${pc.iceConnectionState}):`);
+          (await describePairs(pc)).forEach((line) => addDiag("  " + line));
+        }, ms)
+      );
       pc.onicecandidateerror = (e) =>
         addDiag(`ice error ${e.errorCode} ${e.url || ""} ${e.errorText || ""}`);
       pc.onicegatheringstatechange = () => addDiag("gathering: " + pc.iceGatheringState);
