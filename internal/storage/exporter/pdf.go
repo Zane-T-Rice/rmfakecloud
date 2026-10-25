@@ -27,6 +27,9 @@ const (
 	PaperProHeight = 2160
 	// the Paper Pro shows a pdf at its real size, this many pixels per inch
 	PaperProDPI = 229.0
+	// small corrections to the ink on a pdf, in pixels
+	v6PdfOffsetX = 5.0
+	v6PdfOffsetY = 8.0
 
 	// template-only pages are this wide in points, the height follows the content
 	rmPageWidth  = 445.0
@@ -154,13 +157,15 @@ func highlightColor(c rm.BrushColor) (r, g, b float64) {
 // scaling) of the ink on a pdf page of the given width. The Paper Pro shows the pdf
 // at its real size, centered on x (0 is the middle of the page) with the top of the
 // page at y=0. The decoded x is 1404/2 off from the middle, see v6XCorrection.
-func v6PdfTransform(pageWidth float64) (scale, xShift float64) {
+func v6PdfTransform(pageWidth float64) (scale, xShift, yShift float64) {
 	scale = 72.0 / PaperProDPI
-	return scale, pageWidth/2/scale - float64(DeviceWidth)/2
+	// the ink was still a little high and left of the writing on the tablet,
+	// measured by eye on the printed text of a rulebook
+	return scale, pageWidth/2/scale - float64(DeviceWidth)/2 + v6PdfOffsetX, v6PdfOffsetY
 }
 
-func normalized(p1 rm.Point, ratioX float64, xShift float64) (float64, float64) {
-	return (float64(p1.X) + xShift) * ratioX, float64(p1.Y) * ratioX
+func normalized(p1 rm.Point, ratioX float64, xShift, yShift float64) (float64, float64) {
+	return (float64(p1.X) + xShift) * ratioX, (float64(p1.Y) + yShift) * ratioX
 }
 
 func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGeneratorOptions) (err error) {
@@ -208,6 +213,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 
 		deviceW, deviceH := deviceSize(pageAnnotations.Data, p.v6)
 		xShift := xCorrection(pageAnnotations.Data)
+		yShift := 0.0
 
 		var scale float64
 		if p.template {
@@ -219,7 +225,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 			scale = c.Height() / deviceH
 		}
 		if !p.template && pageAnnotations.Data != nil && pageAnnotations.Data.Version == rm.V6 {
-			scale, xShift = v6PdfTransform(c.Width())
+			scale, xShift, yShift = v6PdfTransform(c.Width())
 		}
 		if page == nil {
 			logrus.Fatal("page is null")
@@ -250,8 +256,8 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 
 				if line.BrushType == rm.HighlighterV5 {
 					last := len(line.Points) - 1
-					x1, y1 := normalized(line.Points[0], scale, xShift)
-					x2, _ := normalized(line.Points[last], scale, xShift)
+					x1, y1 := normalized(line.Points[0], scale, xShift, yShift)
+					x2, _ := normalized(line.Points[last], scale, xShift, yShift)
 					// make horizontal lines only, use y1
 					width := scale * 30
 					y1 += width / 2
@@ -269,7 +275,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 				} else {
 					path := draw.NewPath()
 					for i := 0; i < len(line.Points); i++ {
-						x1, y1 := normalized(line.Points[i], scale, xShift)
+						x1, y1 := normalized(line.Points[i], scale, xShift, yShift)
 						path = path.AppendPoint(draw.NewPoint(x1, c.Height()-y1))
 					}
 

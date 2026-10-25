@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Button, ButtonGroup, Dropdown, Form } from "react-bootstrap";
 import Navbar from 'react-bootstrap/Navbar';
 import { FaChevronRight, FaChevronLeft, } from "react-icons/fa6";
-import { AiOutlineDownload } from "react-icons/ai";
+import { AiOutlineDownload, AiOutlineZoomIn, AiOutlineZoomOut } from "react-icons/ai";
 import constants from "../../common/constants";
 
 import apiservice from "../../services/api.service"
@@ -41,6 +41,7 @@ const savePage = (id, page) => {
   }
 };
 const MIN_PAGE_WIDTH = 400;
+const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3, 4];
 
 export default function FileViewer({ file, onSelect }) {
   const { data } = file;
@@ -50,6 +51,14 @@ export default function FileViewer({ file, onSelect }) {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [width, setWidth] = useState(100);
+  const [zoom, setZoom] = useState(1);
+  const zoomBy = (dir) => {
+    setZoom((z) => {
+      const i = ZOOM_STEPS.indexOf(z) + dir;
+      return ZOOM_STEPS[Math.min(Math.max(i, 0), ZOOM_STEPS.length - 1)];
+    });
+  };
+  const pageWidth = width * zoom;
   // the document whose page is known, nothing is saved before that
   const loadedId = useRef(null);
   const onLoadSuccess = (pdf) => {
@@ -173,6 +182,12 @@ export default function FileViewer({ file, onSelect }) {
         )}
         <div style={{ flex: 1 }}></div>
 
+        <ButtonGroup style={{ marginRight: '8px' }}>
+          <Button size="sm" variant="outline-secondary" onClick={() => zoomBy(-1)} disabled={zoom === ZOOM_STEPS[0]} aria-label="Zoom out"><AiOutlineZoomOut /></Button>
+          <Button size="sm" variant="outline-secondary" onClick={() => setZoom(1)} aria-label="Reset zoom" style={{ minWidth: '3.5em' }}>{Math.round(zoom * 100)}%</Button>
+          <Button size="sm" variant="outline-secondary" onClick={() => zoomBy(1)} disabled={zoom === ZOOM_STEPS[ZOOM_STEPS.length - 1]} aria-label="Zoom in"><AiOutlineZoomIn /></Button>
+        </ButtonGroup>
+
         <Dropdown align="end">
           <Dropdown.Toggle size="sm" variant="secondary">
             <AiOutlineDownload />
@@ -187,11 +202,11 @@ export default function FileViewer({ file, onSelect }) {
 
 
       {file && (
-        <div ref={parent} style={{flex: "1 1 auto", minHeight: 0, overflowY: "auto"}}>
+        <div ref={parent} style={{flex: "1 1 auto", minHeight: 0, overflow: "auto"}}>
 		  <Document file={downloadUrl} onLoadSuccess={onLoadSuccess} options={options}>
-            <div style={{ width, margin: "0 auto" }}>
+            <div style={{ width: pageWidth, margin: "0 auto" }}>
               <Page pageNumber={page}
-                width={width}
+                width={pageWidth}
                 renderAnnotationLayer={false}
                 renderTextLayer={false}
               />

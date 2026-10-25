@@ -56,18 +56,19 @@ func TestPagesWithoutInkFollowTheDocument(t *testing.T) {
 }
 
 func TestV6PdfTransform(t *testing.T) {
-	scale, shift := v6PdfTransform(630)
+	scale, xShift, yShift := v6PdfTransform(630)
 	// what the decoder gives for the middle of the page (x=0) is 702
 	mid := rm.Point{X: float32(DeviceWidth) / 2}
-	x, y := normalized(mid, scale, shift)
-	if x < 314.9 || x > 315.1 {
-		t.Fatalf("middle of the page at %v, want 315", x)
+	x, y := normalized(mid, scale, xShift, yShift)
+	if want := 315 + v6PdfOffsetX*scale; x < want-0.01 || x > want+0.01 {
+		t.Fatalf("middle of the page at %v, want %v", x, want)
 	}
-	if y != 0 {
-		t.Fatalf("y = %v", y)
+	if want := v6PdfOffsetY * scale; y < want-0.01 || y > want+0.01 {
+		t.Fatalf("top of the page at %v, want %v", y, want)
 	}
-	// the top of the page is y=0 and 229 pixels are an inch
-	if _, y := normalized(rm.Point{Y: 229}, scale, shift); y < 71.99 || y > 72.01 {
-		t.Fatalf("229px = %vpt, want 72", y)
+	// 229 pixels are an inch
+	_, y0 := normalized(rm.Point{}, scale, xShift, yShift)
+	if _, y1 := normalized(rm.Point{Y: 229}, scale, xShift, yShift); y1-y0 < 71.99 || y1-y0 > 72.01 {
+		t.Fatalf("229px = %vpt, want 72", y1-y0)
 	}
 }
