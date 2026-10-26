@@ -101,6 +101,8 @@ func TestV6PdfTransformMatchesTheTablet(t *testing.T) {
 		{1289.97, 167.23, 1306.96, 141.15},
 		{360.78, 799.90, 521.09, 676.00},
 		{756.5, 1349.5, 854.35, 1141.15},
+		{256.59, 2022.42, 433.10, 1710.32},
+		{1446.52, 1839.85, 1439.24, 1555.86},
 	} {
 		x, y := normalized(rm.Point{X: p.rx, Y: p.ry}, scale, xShift, yShift)
 		wantX, wantY := 315+(float64(p.sx)-810)/pxPerPt, float64(p.sy)/pxPerPt
