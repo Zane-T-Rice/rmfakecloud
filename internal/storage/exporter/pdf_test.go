@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"math"
 	"testing"
 
 	"github.com/juruen/rmapi/encoding/rm"
@@ -56,12 +57,11 @@ func TestPagesWithoutInkFollowTheDocument(t *testing.T) {
 }
 
 func TestV6PdfTransform(t *testing.T) {
-	scale, xShift, yShift, stretch := v6PdfTransform(630)
+	scale, xShift, yShift := v6PdfTransform(630)
 	// what the decoder gives for the middle of the page (x=0) is 702
 	mid := rm.Point{X: float32(DeviceWidth) / 2}
 	x, y := normalized(mid, scale, xShift, yShift)
-	x = stretchAround(x, 315, stretch)
-	if want := 315 + v6PdfOffsetX*scale*stretch; x < want-0.01 || x > want+0.01 {
+	if want := 315 + v6PdfOffsetX*scale; x < want-0.01 || x > want+0.01 {
 		t.Fatalf("middle of the page at %v, want %v", x, want)
 	}
 	if want := v6PdfOffsetY * scale; y < want-0.01 || y > want+0.01 {
@@ -89,14 +89,23 @@ func TestStrokeWidth(t *testing.T) {
 	}
 }
 
-func TestStretchAround(t *testing.T) {
-	if got := stretchAround(315, 315, 1.1); got != 315 {
-		t.Fatalf("the middle moved to %v", got)
-	}
-	if got := stretchAround(415, 315, 1.1); got < 424.99 || got > 425.01 {
-		t.Fatalf("100pt from the middle at %v, want 425", got)
-	}
-	if got := stretchAround(215, 315, 1.1); got < 204.99 || got > 205.01 {
-		t.Fatalf("-100pt from the middle at %v, want 205", got)
+// the ink of two rulebook pages next to where the tablet showed it on its screen:
+// the pdf is fitted to the 2160px height (2160/810 px per pt) and centered, so a spot
+// at (sx, sy) px is at x = 315 + (sx-810)/2.667 and 810 - sy/2.667 pt, measured from
+// screenshots of the tablet
+func TestV6PdfTransformMatchesTheTablet(t *testing.T) {
+	scale, xShift, yShift := v6PdfTransform(630)
+	const pxPerPt = 2160.0 / 810
+	for _, p := range []struct{ rx, ry, sx, sy float32 }{
+		{190.17, 216.10, 376.29, 182.31},
+		{1289.97, 167.23, 1306.96, 141.15},
+		{360.78, 799.90, 521.09, 676.00},
+		{756.5, 1349.5, 854.35, 1141.15},
+	} {
+		x, y := normalized(rm.Point{X: p.rx, Y: p.ry}, scale, xShift, yShift)
+		wantX, wantY := 315+(float64(p.sx)-810)/pxPerPt, float64(p.sy)/pxPerPt
+		if math.Abs(x-wantX) > 0.5 || math.Abs(y-wantY) > 0.5 {
+			t.Errorf("ink at (%v, %v) is drawn at (%.2f, %.2f)pt, the tablet shows it at (%.2f, %.2f)pt", p.rx, p.ry, x, y, wantX, wantY)
+		}
 	}
 }

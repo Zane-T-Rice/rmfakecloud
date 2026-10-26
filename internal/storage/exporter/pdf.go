@@ -25,15 +25,12 @@ const (
 	// Paper Pro screen, used by v6 files
 	PaperProWidth  = 1620
 	PaperProHeight = 2160
-	// the pixels per inch the ink of a pdf is drawn with. The screen is 229 dpi, but
-	// the end of long notes only lines up with about 228 (the tablet shows the pdf about
-	// 0.4% larger than its real size)
-	PaperProDPI = 228.0
-	// small corrections to the ink on a pdf, in pixels
-	v6PdfOffsetX = -3.0
-	// the ink is stretched across the page by this, around the middle
-	v6PdfStretchX = 1.0075
-	v6PdfOffsetY  = 11.0
+	// the pixels per inch the ink of a pdf is drawn with, fitted to ink and pdf marks
+	// on the tablet's screen (the screen itself is 229 dpi)
+	PaperProDPI = 227.0
+	// what is left over of that fit, in pixels
+	v6PdfOffsetX = -1.0
+	v6PdfOffsetY = -0.5
 
 	// template-only pages are this wide in points, the height follows the content
 	rmPageWidth  = 445.0
@@ -180,16 +177,9 @@ func highlightColor(c rm.BrushColor) (r, g, b float64) {
 // scaling) of the ink on a pdf page of the given width. The Paper Pro shows the pdf
 // at its real size, centered on x (0 is the middle of the page) with the top of the
 // page at y=0. The decoded x is 1404/2 off from the middle, see v6XCorrection.
-func v6PdfTransform(pageWidth float64) (scale, xShift, yShift, xStretch float64) {
+func v6PdfTransform(pageWidth float64) (scale, xShift, yShift float64) {
 	scale = 72.0 / PaperProDPI
-	// the ink was still a little high and left of the writing on the tablet,
-	// measured by eye on the printed text of a rulebook
-	return scale, pageWidth/2/scale - float64(DeviceWidth)/2 + v6PdfOffsetX, v6PdfOffsetY, v6PdfStretchX
-}
-
-// stretchAround scales x away from the middle of the page cx
-func stretchAround(x, cx, stretch float64) float64 {
-	return cx + (x-cx)*stretch
+	return scale, pageWidth/2/scale - float64(DeviceWidth)/2 + v6PdfOffsetX, v6PdfOffsetY
 }
 
 func normalized(p1 rm.Point, ratioX float64, xShift, yShift float64) (float64, float64) {
@@ -242,7 +232,6 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 		deviceW, deviceH := deviceSize(pageAnnotations.Data, p.v6)
 		xShift := xCorrection(pageAnnotations.Data)
 		yShift := 0.0
-		xStretch := 1.0
 
 		var scale float64
 		if p.template {
@@ -254,7 +243,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 			scale = c.Height() / deviceH
 		}
 		if !p.template && pageAnnotations.Data != nil && pageAnnotations.Data.Version == rm.V6 {
-			scale, xShift, yShift, xStretch = v6PdfTransform(c.Width())
+			scale, xShift, yShift = v6PdfTransform(c.Width())
 		}
 		if page == nil {
 			logrus.Fatal("page is null")
@@ -289,9 +278,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 				if line.BrushType == rm.HighlighterV5 {
 					last := len(line.Points) - 1
 					x1, y1 := normalized(line.Points[0], scale, xShift, yShift)
-					x1 = stretchAround(x1, c.Width()/2, xStretch)
 					x2, _ := normalized(line.Points[last], scale, xShift, yShift)
-					x2 = stretchAround(x2, c.Width()/2, xStretch)
 					// make horizontal lines only, use y1
 					width := scale * 30
 					y1 += width / 2
@@ -310,7 +297,6 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 					path := draw.NewPath()
 					for i := 0; i < len(line.Points); i++ {
 						x1, y1 := normalized(line.Points[i], scale, xShift, yShift)
-						x1 = stretchAround(x1, c.Width()/2, xStretch)
 						path = path.AppendPoint(draw.NewPoint(x1, c.Height()-y1))
 					}
 
