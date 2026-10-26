@@ -102,6 +102,14 @@ type templateRenderer struct {
 // the page, which can be much taller than the screen: repeating groups fill it
 // but the expressions keep seeing the screen size. scale is points per pixel.
 func (t *template) Render(c *creator.Creator, width, height, pageHeight, scale float64) (string, error) {
+	return t.RenderAt(c, width, 0, width, height, pageHeight, scale)
+}
+
+// RenderAt is Render for a template laid out in layoutWidth pixels (what
+// templateWidth is) starting originX pixels from the left of the canvas, which is
+// width pixels wide. The Paper Pro shows its templates like this: laid out for the
+// 1404 pixels of the older screen and centered on the wider one.
+func (t *template) RenderAt(c *creator.Creator, width, originX, layoutWidth, height, pageHeight, scale float64) (string, error) {
 	r := &templateRenderer{
 		c:      c,
 		cc:     contentstream.NewContentCreator(),
@@ -112,7 +120,7 @@ func (t *template) Render(c *creator.Creator, width, height, pageHeight, scale f
 	}
 
 	// paperOriginX is where the paper starts, the whole canvas for us
-	scope := scope{"templateWidth": width, "templateHeight": height, "paperOriginX": 0}
+	scope := scope{"templateWidth": layoutWidth, "templateHeight": height, "paperOriginX": 0}
 	for _, entry := range t.Constants {
 		for name, raw := range entry {
 			v, err := evalRaw(raw, scope)
@@ -126,13 +134,13 @@ func (t *template) Render(c *creator.Creator, width, height, pageHeight, scale f
 	}
 
 	root := scope.with(map[string]float64{
-		"parentWidth":  width,
+		"parentWidth":  layoutWidth,
 		"parentHeight": height,
 		"parentX":      0,
 		"parentY":      0,
 	})
 	r.cc.Add_q()
-	if err := r.items(t.Items, root, 0, 0); err != nil {
+	if err := r.items(t.Items, root, originX, 0); err != nil {
 		return "", err
 	}
 	r.cc.Add_Q()

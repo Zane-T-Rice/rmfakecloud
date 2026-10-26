@@ -177,3 +177,22 @@ func TestRenderColors(t *testing.T) {
 		t.Fatalf("colors not set:\n%s", ops)
 	}
 }
+
+// the Paper Pro lays a template out for the 1404 pixels of the older screen and
+// centers that on its 1620: the red line of the checklist template was measured
+// from x=168 to x=1452 on the tablet
+func TestRenderAtCentersTheLayoutOnTheWiderScreen(t *testing.T) {
+	tpl := parseTemplate(t, `{
+		"constants": [{"margin": 60}],
+		"items": [{"type": "path", "data": ["M", "margin", 250, "L", "templateWidth - margin", 250]}]
+	}`)
+	c := creator.New()
+	c.NewPage()
+	ops, err := tpl.RenderAt(c, 1620, 108, 1404, 2160, 2160, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ops, "168 ") || !strings.Contains(ops, "1452 ") {
+		t.Fatalf("line not from x=168 to x=1452:\n%s", ops)
+	}
+}

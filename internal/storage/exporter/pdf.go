@@ -435,7 +435,11 @@ func (p *PdfGenerator) drawTemplate(c *creator.Creator, page *pdf.PdfPage, name 
 		return
 	}
 
-	ops, err := t.Render(c, deviceW, deviceH, c.Height()/scale, scale)
+	layoutW, originX := deviceW, 0.0
+	if deviceW == PaperProWidth {
+		layoutW, originX = DeviceWidth, v6XCorrection
+	}
+	ops, err := t.RenderAt(c, deviceW, originX, layoutW, deviceH, c.Height()/scale, scale)
 	if err != nil {
 		logrus.Warnf("cannot render template %q: %v", name, err)
 		return
