@@ -176,14 +176,37 @@ func highlightColor(c rm.BrushColor) (r, g, b float64) {
 // brushShader is the wide translucent brush of the Paper Pro, a number the decoder doesn't know
 const brushShader = rm.BrushType(23)
 
-// the opacity of a shader stroke that has no color of its own
+// the opacity of a shaded stroke of a color that is not known
 const shaderOpacity = 0.45
 
-// shaderColor is the color and opacity of a stroke of the shader. The stroke carries its own as
-// 0xAARRGGBB (the yellow of the highlight color, 45% opaque on the one measured).
+// highlightBlue is the blue of the highlighter of the Paper Pro, a color the decoder doesn't know
+const highlightBlue = rm.BrushColor(14)
+
+// what the highlighter's colors look like on the tablet's screen over white paper, measured
+// from a screenshot: the strokes are multiplied over the page with these
+var highlightOnWhite = map[rm.BrushColor][3]float64{
+	rm.HighlightYellow: {255, 247, 154},
+	rm.HighlightGreen:  {173, 255, 132},
+	rm.HighlightPink:   {247, 158, 255},
+	highlightBlue:      {189, 235, 255},
+}
+
+// shadedStroke tells if a stroke is drawn as a wide translucent band along its points: what
+// the shader makes, and what the highlighter makes on a Paper Pro, where it is a free
+// scribble and not the straight line of the older tablets
+func shadedStroke(line rm.Line, v6 bool) bool {
+	return line.BrushType == brushShader || (v6 && line.BrushType == rm.HighlighterV5)
+}
+
+// shaderColor is the color and opacity of a shaded stroke. A stroke that has a color of its
+// own carries it as 0xAARRGGBB (the yellow of the shader's highlight color, 45% opaque on
+// the one measured), the others have one of the highlighter's colors.
 func shaderColor(c rm.BrushColor, rgba uint32) (r, g, b, alpha float64) {
 	if rgba != 0 {
 		return float64(rgba>>16&0xff) / 255, float64(rgba>>8&0xff) / 255, float64(rgba&0xff) / 255, float64(rgba>>24) / 255
+	}
+	if rgb, ok := highlightOnWhite[c]; ok {
+		return rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, 1
 	}
 	r, g, b = highlightColor(c)
 	return r, g, b, shaderOpacity
@@ -306,7 +329,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 					continue
 				}
 
-				if line.BrushType == brushShader {
+				if shadedStroke(line, pageAnnotations.Data.Version == rm.V6) {
 					var rgba uint32
 					if len(layer.Lines) == len(lineColors) {
 						rgba = lineColors[li]

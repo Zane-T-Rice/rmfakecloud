@@ -118,10 +118,34 @@ func TestShaderColor(t *testing.T) {
 	if want := [4]float64{250.0 / 255, 231.0 / 255, 25.0 / 255, 115.0 / 255}; math.Abs(r-want[0]) > 1e-9 || math.Abs(g-want[1]) > 1e-9 || math.Abs(b-want[2]) > 1e-9 || math.Abs(a-want[3]) > 1e-9 {
 		t.Errorf("color = %v %v %v %v, want %v", r, g, b, a, want)
 	}
-	// without a color of its own it is a yellow highlight
-	r, g, b, a = shaderColor(rm.HighlightYellow, 0)
-	if r != 1 || g != 1 || b != 0 || a != shaderOpacity {
-		t.Errorf("default = %v %v %v %v", r, g, b, a)
+	// the colors of the highlighter, as the tablet shows them over white paper
+	for c, want := range map[rm.BrushColor][3]float64{
+		rm.HighlightGreen: {173, 255, 132}, rm.HighlightPink: {247, 158, 255}, highlightBlue: {189, 235, 255}, rm.HighlightYellow: {255, 247, 154},
+	} {
+		r, g, b, a = shaderColor(c, 0)
+		if math.Abs(r*255-want[0]) > 1e-6 || math.Abs(g*255-want[1]) > 1e-6 || math.Abs(b*255-want[2]) > 1e-6 || a != 1 {
+			t.Errorf("color %d = %v %v %v %v, want %v opaque", c, r*255, g*255, b*255, a, want)
+		}
+	}
+	// a color that is not known is a translucent highlight
+	if _, _, _, a = shaderColor(rm.BrushColor(77), 0); a != shaderOpacity {
+		t.Errorf("unknown color opacity = %v", a)
+	}
+}
+
+func TestShadedStroke(t *testing.T) {
+	for _, c := range []struct {
+		brush rm.BrushType
+		v6    bool
+		want  bool
+	}{
+		{brushShader, true, true}, {brushShader, false, true},
+		{rm.HighlighterV5, true, true}, {rm.HighlighterV5, false, false},
+		{rm.MarkerV5, true, false}, {rm.BallPointV5, true, false},
+	} {
+		if got := shadedStroke(rm.Line{BrushType: c.brush}, c.v6); got != c.want {
+			t.Errorf("brush %d (v6 %v) shaded = %v, want %v", c.brush, c.v6, got, c.want)
+		}
 	}
 }
 
