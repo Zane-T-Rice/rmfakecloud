@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Container, Alert, Spinner, Button, Form, Offcanvas, Badge } from "react-bootstrap";
-import { BsGearFill, BsFullscreenExit, BsArrowCounterclockwise, BsArrowClockwise, BsPeopleFill } from "react-icons/bs";
+import { BsGearFill, BsFullscreenExit, BsArrowCounterclockwise, BsArrowClockwise, BsPeopleFill, BsCamera } from "react-icons/bs";
 import pako from "pako";
 import constants from "../../common/constants";
 
@@ -676,6 +676,21 @@ export default function ScreenShare() {
   useEffect(() => { manualRotationRef.current = manualRotation; }, [manualRotation]);
   useEffect(() => cleanup, [cleanup]);
 
+  // the canvas holds the tablet's pixels as they came, the rotation is only css
+  const savePng = useCallback(() => {
+    const canvas = videoRef.current;
+    if (!canvas || !canvas.width) return;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `screenshare-${canvas.width}x${canvas.height}-${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }, []);
+
   const disconnectedRef = useRef(false);
 
   const disconnect = () => {
@@ -844,6 +859,18 @@ export default function ScreenShare() {
           }
           return <canvas ref={videoRef} style={canvasStyle} />;
         })()}
+        {status === STATUS.STREAMING && (
+          <Button
+            variant="secondary"
+            className="rounded-circle d-flex align-items-center justify-content-center shadow"
+            style={{ position: "fixed", right: 72, bottom: 16, width: 48, height: 48, zIndex: 1030 }}
+            onClick={savePng}
+            aria-label="Save PNG"
+            title="Save PNG"
+          >
+            <BsCamera />
+          </Button>
+        )}
         <div
           id="pen-cursor"
           style={{
