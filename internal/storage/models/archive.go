@@ -170,6 +170,7 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 			if err != nil {
 				return nil, err
 			}
+			exporter.ApplyAnchors(rmpage, pageBin)
 			page.Data = rmpage
 			if w, _, ok := exporter.PaperSize(pageBin); ok {
 				if a.PaperWidths == nil {
