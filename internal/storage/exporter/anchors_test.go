@@ -52,6 +52,11 @@ func treeNode(id byte, x float32) []byte {
 
 // a stroke of two points in the node parent
 func stroke(parent byte, deleted uint32, x, y float32) []byte {
+	return strokeWith(parent, deleted, x, y)
+}
+
+// the same with fields after its points, as the file has them
+func strokeWith(parent byte, deleted uint32, x, y float32, extra ...[]byte) []byte {
 	var points []byte
 	for i := 0; i < 2; i++ {
 		points = binary.LittleEndian.AppendUint32(points, math.Float32bits(x+float32(i)))
@@ -61,6 +66,9 @@ func stroke(parent byte, deleted uint32, x, y float32) []byte {
 	body := append(append(append(append(tagID(1, parent), tagID(2, 1)...), tagID(3, 0)...), tagID(4, 0)...), tagU32(5, deleted)...)
 	value := append([]byte{lineItemType}, tagU32(1, 15)...)
 	value = append(append(append(append(value, tagU32(2, 0)...), tagF64(3, 1)...), tagF32(4, 0)...), tagSub(5, points)...)
+	for _, e := range extra {
+		value = append(value, e...)
+	}
 	return v6Block(lineItemBlock, 2, append(body, tagSub(6, value)...))
 }
 
@@ -138,5 +146,25 @@ func TestAnchorsPutInkWhereTheTabletShowsIt(t *testing.T) {
 	}
 	if y := last.Y; y < 832 || y > 837 {
 		t.Errorf("bottom of the ink at y=%v, the tablet shows it at 834", y)
+	}
+}
+
+func TestStrokeColorsReadsTheColorOfAStroke(t *testing.T) {
+	// the bytes of the color of a stroke of the shader, 0x73fae719: yellow, 45% opaque
+	rgba := []byte{0x19, 0xe7, 0xfa, 0x73}
+	data := v6File(
+		stroke(7, 0, 10, 10),
+		strokeWith(7, 0, 20, 20, tagID(6, 1), append(tagVar(strokeRGBAField, 0x4), rgba...)),
+		stroke(7, 3, 30, 30),
+	)
+	page := decode(t, data)
+	colors := StrokeColors(page, data)
+	if len(colors) != 2 || colors[0] != 0 || colors[1] != 0x73fae719 {
+		t.Fatalf("colors = %x, want [0 73fae719]", colors)
+	}
+	// nothing when no stroke has a color
+	plain := v6File(stroke(7, 0, 10, 10))
+	if got := StrokeColors(decode(t, plain), plain); got != nil {
+		t.Fatalf("colors of a page without = %x", got)
 	}
 }

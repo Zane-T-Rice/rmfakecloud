@@ -173,6 +173,35 @@ func highlightColor(c rm.BrushColor) (r, g, b float64) {
 	return 1, 1, 0
 }
 
+// brushShader is the wide translucent brush of the Paper Pro, a number the decoder doesn't know
+const brushShader = rm.BrushType(23)
+
+// the opacity of a shader stroke that has no color of its own
+const shaderOpacity = 0.45
+
+// shaderColor is the color and opacity of a stroke of the shader. The stroke carries its own as
+// 0xAARRGGBB (the yellow of the highlight color, 45% opaque on the one measured).
+func shaderColor(c rm.BrushColor, rgba uint32) (r, g, b, alpha float64) {
+	if rgba != 0 {
+		return float64(rgba>>16&0xff) / 255, float64(rgba>>8&0xff) / 255, float64(rgba&0xff) / 255, float64(rgba>>24) / 255
+	}
+	r, g, b = highlightColor(c)
+	return r, g, b, shaderOpacity
+}
+
+// shaderWidth is the width of a stroke of the shader: the width of its points, with no
+// factor, it is a flat wide band and not a pen
+func shaderWidth(line rm.Line, scale float64) float64 {
+	var sum float64
+	for _, p := range line.Points {
+		sum += float64(p.Width)
+	}
+	if sum == 0 {
+		return 30 * scale
+	}
+	return sum / float64(len(line.Points)) * scale
+}
+
 // v6PdfTransform gives the scale (points per pixel) and the x shift (pixels, before
 // scaling) of the ink on a pdf page of the given width. The Paper Pro shows the pdf
 // at its real size, centered on x (0 is the middle of the page) with the top of the
@@ -266,8 +295,10 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 		contentCreator.AddOperand(contentstream.ContentStreamOperation{Operand: "J", Params: []core.PdfObject{core.MakeInteger(1)}})
 		contentCreator.AddOperand(contentstream.ContentStreamOperation{Operand: "j", Params: []core.PdfObject{core.MakeInteger(1)}})
 
+		lineColors := zip.LineColors[i]
+		shaderStates := make(map[string]bool)
 		for _, layer := range pageAnnotations.Data.Layers {
-			for _, line := range layer.Lines {
+			for li, line := range layer.Lines {
 				if len(line.Points) < 1 {
 					continue
 				}
@@ -275,7 +306,38 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 					continue
 				}
 
-				if line.BrushType == rm.HighlighterV5 {
+				if line.BrushType == brushShader {
+					var rgba uint32
+					if len(layer.Lines) == len(lineColors) {
+						rgba = lineColors[li]
+					}
+					sr, sg, sb, alpha := shaderColor(line.BrushColor, rgba)
+					path := draw.NewPath()
+					for i := 0; i < len(line.Points); i++ {
+						x1, y1 := normalized(line.Points[i], scale, xShift, yShift)
+						path = path.AppendPoint(draw.NewPoint(x1, c.Height()-y1))
+					}
+					// the whole stroke at once, so that where it crosses itself it is not darker
+					state := fmt.Sprintf("Shade%d", int(alpha*100+0.5))
+					if !shaderStates[state] {
+						shaderStates[state] = true
+						dict := core.MakeDict()
+						dict.Set("Type", core.MakeName("ExtGState"))
+						dict.Set("CA", core.MakeFloat(alpha))
+						dict.Set("ca", core.MakeFloat(alpha))
+						dict.Set("BM", core.MakeName("Multiply"))
+						if err := page.AddExtGState(core.PdfObjectName(state), dict); err != nil {
+							return err
+						}
+					}
+					contentCreator.Add_q()
+					contentCreator.Add_gs(core.PdfObjectName(state))
+					contentCreator.Add_w(shaderWidth(line, scale))
+					contentCreator.Add_RG(sr, sg, sb)
+					draw.DrawPathWithCreator(path, contentCreator)
+					contentCreator.Add_S()
+					contentCreator.Add_Q()
+				} else if line.BrushType == rm.HighlighterV5 {
 					last := len(line.Points) - 1
 					x1, y1 := normalized(line.Points[0], scale, xShift, yShift)
 					x2, _ := normalized(line.Points[last], scale, xShift, yShift)

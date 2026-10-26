@@ -171,6 +171,12 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 				return nil, err
 			}
 			exporter.ApplyAnchors(rmpage, pageBin)
+			if colors := exporter.StrokeColors(rmpage, pageBin); colors != nil {
+				if a.LineColors == nil {
+					a.LineColors = make(map[int][]uint32)
+				}
+				a.LineColors[i] = colors
+			}
 			page.Data = rmpage
 			if w, _, ok := exporter.PaperSize(pageBin); ok {
 				if a.PaperWidths == nil {

@@ -111,3 +111,26 @@ func TestV6PdfTransformMatchesTheTablet(t *testing.T) {
 		}
 	}
 }
+
+func TestShaderColor(t *testing.T) {
+	// the color of the highlight on page 25 of a rulebook, as the file has it
+	r, g, b, a := shaderColor(rm.HighlightDynamic, 0x73fae719)
+	if want := [4]float64{250.0 / 255, 231.0 / 255, 25.0 / 255, 115.0 / 255}; math.Abs(r-want[0]) > 1e-9 || math.Abs(g-want[1]) > 1e-9 || math.Abs(b-want[2]) > 1e-9 || math.Abs(a-want[3]) > 1e-9 {
+		t.Errorf("color = %v %v %v %v, want %v", r, g, b, a, want)
+	}
+	// without a color of its own it is a yellow highlight
+	r, g, b, a = shaderColor(rm.HighlightYellow, 0)
+	if r != 1 || g != 1 || b != 0 || a != shaderOpacity {
+		t.Errorf("default = %v %v %v %v", r, g, b, a)
+	}
+}
+
+func TestShaderWidth(t *testing.T) {
+	line := rm.Line{Points: []rm.Point{{Width: 30}, {Width: 40}}}
+	if got, want := shaderWidth(line, 0.5), 17.5; math.Abs(got-want) > 1e-9 {
+		t.Errorf("width = %v, want %v", got, want)
+	}
+	if got := shaderWidth(rm.Line{Points: []rm.Point{{}}}, 0.5); got != 15 {
+		t.Errorf("no widths = %v, want 15", got)
+	}
+}

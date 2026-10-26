@@ -17,6 +17,8 @@ const (
 	// from the origin of the page its x is
 	anchorIDField      = 7
 	anchorOriginXField = 10
+	// the tag of the color of a stroke that has one of its own, after its points
+	strokeRGBAField = 8
 	// where a group that is anchored to a page without text starts, measured from
 	// screenshots of the tablet: its text box starts at 234
 	anchorY = 296.0
@@ -100,12 +102,20 @@ func lwwValue(b []byte, f field, kind int) (field, bool) {
 
 type groupAnchor struct{ x, y float32 }
 
-// strokeAnchors gives for the strokes of a v6 page, in the order the decoder gives them,
-// the shift of the group they are in: a group that was moved or written on text is
-// anchored somewhere else than the page's origin, and its strokes are drawn from there.
-func strokeAnchors(data []byte) ([]groupAnchor, bool) {
+// what the file has of a stroke that the decoder leaves out
+type strokeInfo struct {
+	// the shift of the group the stroke is in: a group that was moved or written on text is
+	// anchored somewhere else than the page's origin, and its strokes are drawn from there
+	anchor groupAnchor
+	// the color of the stroke as 0xAARRGGBB when it has one of its own, as the shader does
+	rgba uint32
+}
+
+// pageStrokes gives the strokes of a v6 page in the order the decoder gives them.
+func pageStrokes(data []byte) ([]strokeInfo, bool) {
 	groups := make(map[string]groupAnchor)
 	var parents []string
+	var colors []uint32
 	for o := v6HeaderSize; o+v6BlockHeaderSize <= len(data); {
 		end := o + v6BlockHeaderSize + int(binary.LittleEndian.Uint32(data[o:]))
 		if end > len(data) {
@@ -161,13 +171,18 @@ func strokeAnchors(data []byte) ([]groupAnchor, bool) {
 			_, okPoints := findField(inner, 5, 0xc)
 			if okPen && okColor && okThickness && okStart && okPoints {
 				parents = append(parents, string(data[parent.start:parent.stop]))
+				var rgba uint32
+				if c, ok := findField(inner, strokeRGBAField, 0x4); ok {
+					rgba = binary.LittleEndian.Uint32(data[c.start:])
+				}
+				colors = append(colors, rgba)
 			}
 		}
 		o = end
 	}
-	out := make([]groupAnchor, len(parents))
+	out := make([]strokeInfo, len(parents))
 	for i, p := range parents {
-		out[i] = groups[p]
+		out[i] = strokeInfo{anchor: groups[p], rgba: colors[i]}
 	}
 	return out, true
 }
@@ -178,14 +193,14 @@ func ApplyAnchors(page *rm.Rm, data []byte) {
 	if page == nil || page.Version != rm.V6 || len(page.Layers) != 1 {
 		return
 	}
-	anchors, ok := strokeAnchors(data)
+	strokes, ok := pageStrokes(data)
 	lines := page.Layers[0].Lines
-	if !ok || len(anchors) != len(lines) {
-		logrus.Warnf("not moving the strokes of a page with anchors: %d strokes in the file, %d decoded (%v)", len(anchors), len(lines), ok)
+	if !ok || len(strokes) != len(lines) {
+		logrus.Warnf("not moving the strokes of a page with anchors: %d strokes in the file, %d decoded (%v)", len(strokes), len(lines), ok)
 		return
 	}
 	for i := range lines {
-		a := anchors[i]
+		a := strokes[i].anchor
 		if a == (groupAnchor{}) {
 			continue
 		}
@@ -194,4 +209,28 @@ func ApplyAnchors(page *rm.Rm, data []byte) {
 			lines[i].Points[j].Y += a.y
 		}
 	}
+}
+
+// StrokeColors gives the color of the strokes of a v6 page that have one of their own, as
+// 0xAARRGGBB, in the order of the decoded strokes (0 is none). A stroke of the shader, the
+// tablet's wide translucent highlighter, has the yellow it was made with here and the
+// decoder leaves it out. It gives nothing when the strokes of the file are not the decoded.
+func StrokeColors(page *rm.Rm, data []byte) []uint32 {
+	if page == nil || page.Version != rm.V6 || len(page.Layers) != 1 {
+		return nil
+	}
+	strokes, ok := pageStrokes(data)
+	if !ok || len(strokes) != len(page.Layers[0].Lines) {
+		return nil
+	}
+	colors := make([]uint32, len(strokes))
+	any := false
+	for i, st := range strokes {
+		colors[i] = st.rgba
+		any = any || st.rgba != 0
+	}
+	if !any {
+		return nil
+	}
+	return colors
 }
