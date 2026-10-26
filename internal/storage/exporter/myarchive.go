@@ -16,6 +16,8 @@ func init() {
 type MyArchive struct {
 	archive.Zip
 	PayloadReader io.ReadSeekCloser
+	// the width in pixels of the paper of the pages (their index) that have it, see PaperSize
+	PaperWidths map[int]int
 }
 
 func (f *MyArchive) Close() {

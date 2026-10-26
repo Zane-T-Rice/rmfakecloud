@@ -250,7 +250,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 		}
 
 		if p.template && !p.options.AnnotationsOnly {
-			p.drawTemplate(c, page, pageAnnotations.Pagedata, deviceW, deviceH, scale)
+			p.drawTemplate(c, page, pageAnnotations.Pagedata, deviceW, deviceH, float64(zip.PaperWidths[i]), scale)
 		}
 
 		if err != nil {
@@ -400,7 +400,7 @@ func (p *PdfGenerator) addBackgroundPage(c *creator.Creator, pageNum int, templa
 
 // drawTemplate draws the background template of a notebook page, if the
 // template files are available. Pages are left blank otherwise.
-func (p *PdfGenerator) drawTemplate(c *creator.Creator, page *pdf.PdfPage, name string, deviceW, deviceH, scale float64) {
+func (p *PdfGenerator) drawTemplate(c *creator.Creator, page *pdf.PdfPage, name string, deviceW, deviceH, paperW, scale float64) {
 	if p.options.TemplatesDir == "" || name == "" || name == "Blank" {
 		return
 	}
@@ -421,9 +421,10 @@ func (p *PdfGenerator) drawTemplate(c *creator.Creator, page *pdf.PdfPage, name 
 		return
 	}
 
+	// the tablet lays the template out on the paper of the page, centered on its screen
 	layoutW, originX := deviceW, 0.0
-	if deviceW == PaperProWidth {
-		layoutW, originX = DeviceWidth, v6XCorrection
+	if paperW > 0 && paperW < deviceW {
+		layoutW, originX = paperW, (deviceW-paperW)/2
 	}
 	ops, err := t.RenderAt(c, deviceW, originX, layoutW, deviceH, c.Height()/scale, scale)
 	if err != nil {

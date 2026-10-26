@@ -171,6 +171,12 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 				return nil, err
 			}
 			page.Data = rmpage
+			if w, _, ok := exporter.PaperSize(pageBin); ok {
+				if a.PaperWidths == nil {
+					a.PaperWidths = make(map[int]int)
+				}
+				a.PaperWidths[i] = w
+			}
 		}
 		// A page with no .rm file (never opened/annotated on the device)
 		// still needs an entry here so the output page count and page
