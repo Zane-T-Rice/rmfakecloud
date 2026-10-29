@@ -284,6 +284,9 @@ func sequence(chars []textChar) []textChar {
 	return out
 }
 
+// the id a group has when it is anchored to the end of the text, the one before it is the start
+const endOfText = 1<<48 - 1
+
 // AnchorY is where the strokes anchored to a character start: the top of its paragraph, the
 // same distance below as the first one is below the top of the text box
 func (t *PageText) AnchorY(id charID) (float64, bool) {
@@ -291,6 +294,9 @@ func (t *PageText) AnchorY(id charID) (float64, bool) {
 		return 0, false
 	}
 	i, ok := t.paragraphOf[id]
+	if id == (charID{0, endOfText}) {
+		i, ok = len(t.Paragraphs)-1, true
+	}
 	if !ok {
 		return 0, false
 	}

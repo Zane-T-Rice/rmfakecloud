@@ -45,6 +45,10 @@ func TestAnchorYFollowsParagraph(t *testing.T) {
 	if y, ok := text.AnchorY(charID{1, 780}); !ok || y != anchorY+4*lineHeight {
 		t.Errorf("anchor %v %v", y, ok)
 	}
+	// the end of the text is the last paragraph, under the heading
+	if y, ok := text.AnchorY(charID{0, endOfText}); !ok || y != anchorY+9*lineHeight+headingHeight {
+		t.Errorf("end of text %v %v", y, ok)
+	}
 	if _, ok := text.AnchorY(charID{0, 1 << 40}); ok {
 		t.Error("an id that is not in the text has an anchor")
 	}
