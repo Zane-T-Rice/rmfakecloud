@@ -167,7 +167,7 @@ func parseTextBlock(b []byte) *PageText {
 	}
 
 	para := 0
-	t.Paragraphs = append(t.Paragraphs, Paragraph{})
+	t.Paragraphs = append(t.Paragraphs[:0], Paragraph{Style: styles[charID{}]})
 	var text []rune
 	flush := func() {
 		t.Paragraphs[para].Text = string(text)
@@ -191,6 +191,11 @@ func parseTextBlock(b []byte) *PageText {
 	y := t.Y
 	for i := range t.Paragraphs {
 		t.Paragraphs[i].Y = y
+		// the space a heading has above it is cut off at the top of the text box
+		if i == 0 {
+			y += lineHeight
+			continue
+		}
 		y += paragraphHeight(t.Paragraphs[i].Style)
 	}
 	return t
@@ -203,8 +208,7 @@ func paragraphHeight(style int) float64 {
 	return lineHeight
 }
 
-// the style of the paragraph that follows each character that ends one. The entry of the zero id
-// is left out: measured against the tablet, the first paragraph is not drawn as that style
+// the style of the paragraph that follows each character that ends one, the first paragraph has the zero id
 func readStyles(b []byte, from, to int) map[charID]int {
 	styles := make(map[charID]int)
 	start, end, ok := readSub(b, from, 2)
@@ -232,9 +236,7 @@ func readStyles(b []byte, from, to int) map[charID]int {
 		if !ok || ve > innerEnd || vs+2 > ve {
 			return styles
 		}
-		if id != (charID{}) {
-			styles[id] = int(b[vs+1])
-		}
+		styles[id] = int(b[vs+1])
 		o = ve
 	}
 	return styles

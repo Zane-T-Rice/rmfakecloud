@@ -27,6 +27,9 @@ func TestParseText(t *testing.T) {
 	if len(text.Paragraphs) != 11 {
 		t.Fatalf("%d paragraphs", len(text.Paragraphs))
 	}
+	if text.Paragraphs[0].Style != styleHeading || text.Paragraphs[1].Y != 234+lineHeight {
+		t.Errorf("first %+v, second %+v", text.Paragraphs[0], text.Paragraphs[1])
+	}
 	heading, plain := text.Paragraphs[9], text.Paragraphs[10]
 	if heading.Text != "Brug" || heading.Style != styleHeading || heading.Y != 234+9*lineHeight {
 		t.Errorf("heading %+v", heading)

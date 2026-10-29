@@ -548,13 +548,16 @@ func drawText(c *creator.Creator, text *PageText, scale, xShift, yShift float64)
 	}
 	// the text box starts at its x from the center of the page, like the x of the strokes
 	left := (text.X + float64(DeviceWidth)/2 + xShift) * scale
-	for _, para := range text.Paragraphs {
+	for i, para := range text.Paragraphs {
 		if para.Text == "" {
 			continue
 		}
 		font, size, baseline := sans, textSize, textBaseline
 		if para.Style == styleHeading {
 			font, size, baseline = serif, headingSize, headingBaseline
+			if i == 0 {
+				baseline -= headingHeight - lineHeight
+			}
 		}
 		p := c.NewParagraph(para.Text)
 		p.SetFont(font)
