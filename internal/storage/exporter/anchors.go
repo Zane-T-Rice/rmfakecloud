@@ -114,6 +114,7 @@ type strokeInfo struct {
 // pageStrokes gives the strokes of a v6 page in the order the decoder gives them.
 func pageStrokes(data []byte) ([]strokeInfo, bool) {
 	groups := make(map[string]groupAnchor)
+	text := ParseText(data)
 	var parents []string
 	var colors []uint32
 	for o := v6HeaderSize; o+v6BlockHeaderSize <= len(data); {
@@ -139,11 +140,18 @@ func pageStrokes(data []byte) ([]strokeInfo, bool) {
 				break
 			}
 			x, okX := lwwValue(data, originX, 0x4)
-			_, okAnchor := lwwValue(data, anchor, 0xf)
+			anchorField, okAnchor := lwwValue(data, anchor, 0xf)
 			if okX && okAnchor {
+				y := anchorY
+				// anchored to a character of the text: where its paragraph is
+				if cid, _, ok := readCharID(data, anchorField.start); ok {
+					if ty, ok := text.AnchorY(cid); ok {
+						y = ty
+					}
+				}
 				groups[string(data[id.start:id.stop])] = groupAnchor{
 					x: math.Float32frombits(binary.LittleEndian.Uint32(data[x.start:])),
-					y: anchorY,
+					y: float32(y),
 				}
 			}
 		case lineItemBlock:

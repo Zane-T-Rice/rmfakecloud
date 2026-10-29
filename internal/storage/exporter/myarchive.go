@@ -20,6 +20,8 @@ type MyArchive struct {
 	PaperWidths map[int]int
 	// the colors of the strokes of the pages (their index) that have some of their own, see StrokeColors
 	LineColors map[int][]uint32
+	// the typed text of the pages (their index) that have some, see ParseText
+	Texts map[int]*PageText
 }
 
 func (f *MyArchive) Close() {

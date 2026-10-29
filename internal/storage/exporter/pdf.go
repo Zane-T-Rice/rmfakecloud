@@ -305,7 +305,7 @@ func (p *PdfGenerator) Generate(zip *MyArchive, output io.Writer, options PdfGen
 			p.drawTemplate(c, page, pageAnnotations.Pagedata, deviceW, deviceH, float64(zip.PaperWidths[i]), scale)
 		}
 
-		if err != nil {
+		if err := drawText(c, zip.Texts[i], scale, xShift, yShift); err != nil {
 			return err
 		}
 		if !hasContent {
@@ -522,4 +522,50 @@ func (p *PdfGenerator) drawTemplate(c *creator.Creator, page *pdf.PdfPage, name 
 		return
 	}
 	page.SetContentStreams([]string{existing, ops}, core.NewFlateEncoder())
+}
+
+// the sizes of the typed text in pixels, and how far below the top of its paragraph its baseline is
+const (
+	textSize        = 40.0
+	headingSize     = 68.0
+	textBaseline    = 68.0
+	headingBaseline = 145.0
+)
+
+// drawText writes the typed text of a v6 page. The tablet's fonts are not here: the sans and the
+// serif of the standard ones stand in for the plain text and the headings.
+func drawText(c *creator.Creator, text *PageText, scale, xShift, yShift float64) error {
+	if text == nil {
+		return nil
+	}
+	sans, err := pdf.NewStandard14Font(pdf.HelveticaName)
+	if err != nil {
+		return err
+	}
+	serif, err := pdf.NewStandard14Font(pdf.TimesRomanName)
+	if err != nil {
+		return err
+	}
+	// the text box starts at its x from the center of the page, like the x of the strokes
+	left := (text.X + float64(DeviceWidth)/2 + xShift) * scale
+	for _, para := range text.Paragraphs {
+		if para.Text == "" {
+			continue
+		}
+		font, size, baseline := sans, textSize, textBaseline
+		if para.Style == styleHeading {
+			font, size, baseline = serif, headingSize, headingBaseline
+		}
+		p := c.NewParagraph(para.Text)
+		p.SetFont(font)
+		p.SetFontSize(size * scale)
+		p.SetEnableWrap(false)
+		p.SetColor(creator.ColorBlack)
+		// the paragraph is placed by its top, a little above the ascent of its font
+		p.SetPos(left, (para.Y+yShift+baseline-size*0.9)*scale)
+		if err := c.Draw(p); err != nil {
+			return err
+		}
+	}
+	return nil
 }

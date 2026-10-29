@@ -177,6 +177,12 @@ func ArchiveFromHashDoc(doc *HashDoc, rs RemoteStorage) (*exporter.MyArchive, er
 				}
 				a.LineColors[i] = colors
 			}
+			if text := exporter.ParseText(pageBin); text != nil {
+				if a.Texts == nil {
+					a.Texts = make(map[int]*exporter.PageText)
+				}
+				a.Texts[i] = text
+			}
 			page.Data = rmpage
 			if w, _, ok := exporter.PaperSize(pageBin); ok {
 				if a.PaperWidths == nil {
